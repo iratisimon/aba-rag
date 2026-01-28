@@ -105,7 +105,7 @@ def cargar_metadata(
     nombre_archivo: str,
     categoria: str,
 ) -> None:
-    metadata_file = utils.project_root() / "data" / "metadataPDF.json"
+    metadata_file = utils.project_root() / "data" / "metadata_pdf.json"
     metadata_file.parent.mkdir(parents=True, exist_ok=True)
 
     # Si existe, lo cargamos; si no, empezamos lista vacía
