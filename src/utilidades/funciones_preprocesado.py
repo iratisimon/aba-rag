@@ -61,7 +61,6 @@ def extraer_imagen(ruta_pdf):
     """
     doc = fitz.open(ruta_pdf)
     nombre_base = os.path.basename(ruta_pdf).replace('.pdf', '')
-    metadatos_imagenes = []
 
     # Recorrer páginas
     for num_pag, pagina in enumerate(doc, 1):
