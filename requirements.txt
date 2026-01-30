@@ -10,3 +10,4 @@ fastapi
 uvicorn
 langchain_openai
 langgraph
+langchain_text_splitters

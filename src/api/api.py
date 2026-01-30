@@ -97,7 +97,7 @@ def nodo_router(state: GraphState):
     clasificacion = clasificacion.strip().upper()
 
     if clasificacion == "SALUDO":
-        state["respuesta_final"] = "¡Hola! ¿En qué puedo ayudarte?"
+        state["respuesta_final"] = "¡Hola! Estoy aquí para ayudarte con temas de empleo, ayudas, subvenciones y temas fiscales. Pregúntame lo que quieras."
         state["debug_pipeline"].append("[ROUTER] Detectado SALUDO.")
         state["destino"] = "fin"
         return state
@@ -241,7 +241,7 @@ class RespuestaResponse(BaseModel):
     tiempo_segundos: float
 
 @app.get("/health")
-def health(): return {"status": "ok", "version": "v1.0"}
+def health(): return {"status": "OK", "version": "1.0"}
 
 @app.post("/chat", response_model=RespuestaResponse)
 async def chat_endpoint(request: PreguntaRequest):
