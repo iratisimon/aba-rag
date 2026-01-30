@@ -6,4 +6,7 @@ openai
 python-dotenv
 pymupdf
 plotly
-load_dotenv
+fastapi
+uvicorn
+langchain_openai
+langgraph

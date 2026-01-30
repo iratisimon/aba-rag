@@ -1,13 +1,9 @@
-"""
-API para la aplicacion de RAG
-"""
-
 import os
 import sys
 import time
 from loguru import logger
 from typing import List, Optional, TypedDict
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import chromadb
@@ -15,8 +11,26 @@ from sentence_transformers import SentenceTransformer
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, END
 import uvicorn
+from pathlib import Path
+
+# Agregar src al path para asegurar imports si se ejecuta directamente
+sys.path.append(str(Path(__file__).resolve().parents[2] / "src"))
+
+from utilidades import utils, funciones_db
+from utilidades import prompts
 
 load_dotenv()
+
+# Validacion de variables de entorno
+REQUIRED_VARS = [
+    "DB_DIR", "COLLECTION_NAME", "MODELO_EMBEDDINGS", 
+    "LLM_BASE_URL", "LLM_API_KEY", "MODELO_LLM", "MODELO_FAST"
+]
+
+missing_vars = [var for var in REQUIRED_VARS if not os.getenv(var)]
+if missing_vars:
+    logger.critical(f"Faltan variables de entorno críticas: {missing_vars}")
+    raise RuntimeError(f"Configuración incompleta. Faltan: {missing_vars}")
 
 DB_DIR = os.getenv("DB_DIR")
 COLLECTION_NAME = os.getenv("COLLECTION_NAME")
@@ -52,16 +66,7 @@ def generar_hyde(pregunta, client_llm)->str:
     Returns:
         str: Respuesta alucinada.
     """
-    system_prompt = """
-                    Actúa como un Asesor Técnico de la Hacienda Foral de Bizkaia y experto en Gestión Administrativa.
-                    Tu tarea es convertir la consulta del usuario en un fragmento de manual técnico o normativa foral (estilo extracto de Bizkaia.eus o Reglamento del Impuesto sobre Actividades Económicas).
-
-                    Instrucciones:
-                    - No respondas al usuario directamente.
-                    - Traduce el lenguaje coloquial a terminología administrativa y tributaria precisa (ej: usa 'Hecho Imponible', 'Domicilio Fiscal', 'Modelo 036', 'TicketBai/Batuz', 'Exención', 'Censo de Entidades').
-                    - Redacta un párrafo breve, formal y descriptivo que contenga la información teórica necesaria para resolver la consulta.
-                    - Asegúrate de mencionar conceptos específicos de la normativa de Bizkaia si son relevantes.
-                    """
+    system_prompt = prompts.get_hyde_prompt()
     try:
         r = client_llm.invoke([{"role": "system", "content": system_prompt}, {"role": "user", "content": pregunta}])
         return r.content
@@ -76,14 +81,7 @@ def nodo_router(state: GraphState):
     logger.info(f"[ROUTER] Analizando: {pregunta}")
     llm = ChatOpenAI(base_url=LLM_BASE_URL, api_key=LLM_API_KEY, model=MODELO_FAST, temperature=0)
     
-    system_prompt = f"""
-                    Eres un Clasificador de Intenciones experto.
-                    Tu trabajo es categorizar la pregunta del usuario en una de las siguientes opciones:
-                    1. SALUDO (charla trivial).
-                    2. CATEGORIAS: {', '.join(CATEGORIAS_VALIDAS)}.
-                    
-                    Responde ÚNICAMENTE con la palabra de la categoría (o 'SALUDO'). Nada más.
-                    """
+    system_prompt = prompts.get_router_prompt(CATEGORIAS_VALIDAS)
     
     user_prompt =   f"PREGUNTA DEL USUARIO: '{pregunta}'"
 
@@ -133,8 +131,8 @@ def nodo_buscador(state: GraphState):
     model_emb = SentenceTransformer(MODELO_EMBEDDINGS)
     q_emb = utils.generar_embeddings(model_emb, [doc_hyde])
     
-    client_db = chromadb.PersistentClient(path=DB_DIR)
-    col = client_db.get_collection(COLLECTION_NAME)
+    # Uso de funcion centralizada para obtener coleccion
+    col = funciones_db.obtener_coleccion()
     
     res = col.query(
         query_embeddings=q_emb,
@@ -186,21 +184,7 @@ def nodo_generador(state: GraphState):
         state["respuesta_final"] = "Lo siento, no tengo información suficiente en mis guías para responder a tu pregunta."
         return state
 
-    system_prompt = """
-                    Eres un Asistente Virtual Especializado en Normativa para Autónomos en Bizkaia. 
-                    Tu objetivo es resolver dudas sobre trámites, impuestos y ayudas basándote EXCLUSIVAMENTE en el contexto proporcionado.
-
-                    DIRECTRICES:
-                    1. EXCLUSIVIDAD DE DATOS: Responde únicamente utilizando la información del contexto. Si la respuesta no figura en los documentos, di exactamente: "Lo siento, no cuento con información específica en la documentación técnica para responder a esa duda".
-                    2. RIGOR LOCAL: Prioriza siempre términos específicos de la Hacienda Foral de Bizkaia (ej. Batuz, TicketBai, Modelo 140, IAE).
-                    3. ESTRUCTURA Y CLARIDAD:
-                    - Usa un tono profesional, directo y alentador para el trabajador autónomo.
-                    - Si el contexto incluye pasos de un trámite, preséntalos en una lista numerada.
-                    4. CITACIÓN: Menciona el nombre del documento o guía de donde extraes la información (ej. "Según la Guía de Batuz 2024...") si está disponible en el contexto.
-                    5. ADVERTENCIA LEGAL: Al final de respuestas sobre impuestos o trámites legales, añade una breve nota indicando que esta información es orientativa y recomienda consultar con la Hacienda Foral o una asesoría colegiada.
-                    6. NO INVENTAR: No menciones ayudas estatales o de otras provincias si no aparecen en los fragmentos recuperados.
-                    7. FORMATO DE RESPUESTA: Usa Markdown para dar formato a la respuesta, pudiendo usar negritas, cursivas, listas, etc. No uses emojis.
-                    """
+    system_prompt = prompts.get_generator_prompt()
 
     user_prompt =   f"""
                     CONTEXTO RECUPERADO ({state.get('categoria_detectada', 'otros')}):
