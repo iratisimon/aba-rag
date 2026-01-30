@@ -23,6 +23,25 @@ COLLECTION_NAME = os.getenv("COLLECTION_NAME")
 MODELO_EMBEDDINGS = os.getenv("MODELO_EMBEDDINGS")
 MODELO_BLIP = os.getenv("MODELO_BLIP")
 
+def cargar_modelos():
+    """Carga todos los modelos de IA necesarios."""
+    logger.info("Cargando modelos de IA... (Esto puede tardar un poco)")
+    
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    logger.info(f"   Dispositivo detectado: {device.upper()}")
+
+    # 1. Modelo de Embeddings (Texto)
+    logger.info("   Cargando Embeddings Multilingües...")
+    model_emb = SentenceTransformer(MODELO_EMBEDDINGS)
+
+    # 2. Modelo de Visión (BLIP)
+    logger.info("   Cargando BLIP (Visión)...")
+    processor = BlipProcessor.from_pretrained(MODELO_BLIP)
+    model_blip = BlipForConditionalGeneration.from_pretrained(MODELO_BLIP)
+    model_blip.to(device)
+    
+    return model_emb, processor, model_blip, device
+
 def crear_db(reset=False):
     """
     Crea la base de datos de Chroma.
