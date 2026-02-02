@@ -39,7 +39,7 @@ def limpiar_texto(texto: str) -> str:
 
     return t
 
-def chunk(texto: str, chunk_size=200, overlap=50) -> list:
+def hacer_chunking(texto: str, chunk_size=200, overlap=50) -> list:
     """
     Usa LangChain para dividir el texto en chunks.
 
@@ -50,10 +50,6 @@ def chunk(texto: str, chunk_size=200, overlap=50) -> list:
     returns:
         list de chunks
     """
-
-    logger.info(f" Configurando Splitter: Size={chunk_size}, Overlap={overlap}")
-    
-    # Crear el objeto splitter 
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size,      # Tamaño objetivo
         chunk_overlap=overlap,      # Solapamiento para contexto
@@ -61,7 +57,44 @@ def chunk(texto: str, chunk_size=200, overlap=50) -> list:
         separators=["\n\n", "\n", " ", ""] # Prioridad de corte : Párrafos > Líneas > Frases 
     )
 
-    # Ejecutar el corte
+    # 2. Ejecutar el corte
     chunks = text_splitter.split_text(texto)
     
     return chunks
+
+def chunk_padre_hijo(texto: str) -> list:
+    """
+    Crea Pares [Hijo, Texto_Padre]. Lógica "Small-to-Big".
+    
+    1. Primero cortamos el texto en bloques GRANDES (Padres). Estos tienen el sentido completo.
+    2. Luego, cada bloque grande lo volvemos a picar en trozos PEQUEÑOS (Hijos).
+    
+    ¿Por qué?
+    - Los HIJOS son vectores: Muy específicos, fáciles de encontrar por similitud.
+    - Los PADRES son contexto: Lo que realmente necesita leer el LLM.
+    
+    Al final, guardamos el HIJO en la base de datos, pero le metemos una nota 
+    en su mochila (metadatos) que contiene el texto del PADRE entero.
+    """
+    chunks_procesados = []
+
+    chunks_padre = hacer_chunking(texto, chunk_size=2000, overlap=200)
+    
+    logger.info(f"Generados {len(chunks_padre)} Chunks padre.")
+    
+    total_hijos = 0
+
+    for i, texto_padre in enumerate(chunks_padre):
+        chunks_hijo = hacer_chunking(texto_padre, chunk_size=400, overlap=50)
+        total_hijos += len(chunks_hijo)
+
+        for texto_hijo in chunks_hijo:
+            chunks_procesados.append({
+                "texto_vectorizable": texto_hijo,     
+                "texto_completo_padre": texto_padre,  
+                "padre_id": i
+            })
+
+    logger.info(f"Generados {total_hijos} Chunks hijo.")
+
+    return chunks_procesados

@@ -3,7 +3,8 @@ que se van a recoger en la base de datos"""
 import json
 import os
 from loguru import logger
-from utilidades import utils
+#from utilidades import utils
+import utils
 import glob
 import fitz
 from openai import OpenAI
@@ -44,14 +45,13 @@ def  leer_pdf(ruta_pdf: str) -> str:
         logger.error(f"No encuentro el archivo: {ruta_pdf}")
         return ""
 
-    logger.info(f"  Leyendo texto del PDF...")
     doc = fitz.open(ruta_pdf)
     texto_completo = ""
     
     for pagina in doc:
         texto_completo += pagina.get_text() + "\n"
         
-    logger.info(f"    ✓ Leídas {len(doc)} páginas ({len(texto_completo)} caracteres)")
+    logger.info(f"Leídas {len(doc)} páginas ({len(texto_completo)} caracteres)")
     return texto_completo
 
 def extraer_imagen(ruta_pdf):
