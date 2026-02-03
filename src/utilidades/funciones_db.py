@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from tqdm import tqdm
 from PIL import Image
 import torch
+from transformers import CLIPModel, CLIPProcessor
 from sentence_transformers import SentenceTransformer, util
 #from utilidades import utils
 import utils
@@ -19,8 +20,10 @@ import json
 from funciones_preprocesado import leer_pdf
 import traceback
 import uuid
+import sys
 
 load_dotenv()
+
 
 DB_PATH = os.getenv("DB_PATH")
 COLLECTION_NAME_PDFS = os.getenv("COLLECTION_NAME_PDFS")
@@ -59,13 +62,16 @@ def cargar_modelos():
     logger.info("Cargando Embeddings de Texto...")
     model_emb = SentenceTransformer(MODELO_EMBEDDINGS)
 
-    # 2. Modelo de Visión (CLIP desde SentenceTransformers)
+    # 2. Modelo de Visión (CLIP)
     logger.info("Cargando CLIP (Visión)...")
-    model_clip = SentenceTransformer(MODELO_CLIP)
+    model_clip = CLIPModel.from_pretrained(MODELO_CLIP)
     model_clip.to(device)
     
+    # 3. Processor de CLIP (para procesar imágenes)
+    logger.info("Cargando CLIP Processor...")
+    clip_processor = CLIPProcessor.from_pretrained(MODELO_CLIP)
     
-    return model_emb, model_clip, device
+    return model_emb, model_clip, clip_processor, device
 
 def crear_db(reset=False):
     """
@@ -102,7 +108,7 @@ def crear_db(reset=False):
     
     return {"pdfs": collection_pdfs, "imagenes": collection_imagenes}
 
-def insertar_texto(texto, nombre_pdf, modelo_embeddings, collection):
+def insertar_texto(texto, nombre_pdf, modelo_embeddings, collection, metadatos_json=None):
     """
     Inserta un texto en la base de datos con metadatos del PDF.
     
@@ -124,17 +130,14 @@ def insertar_texto(texto, nombre_pdf, modelo_embeddings, collection):
         return
     
     categoria = "sin_categoria"  # valor por defecto
-    try:
-        with open("data/metadata_pdf.json", "r", encoding="utf-8") as f:
-            metadatos_json = json.load(f)
+    if metadatos_json:
+        try:
             for doc in metadatos_json:
                 if doc.get("archivo") == nombre_pdf:
                     categoria = doc.get("categoria", "sin_categoria")
                     break
-    except FileNotFoundError:
-        logger.warning("No se encontró data/metadata_pdf.json, se usará categoria por defecto")
-    except json.JSONDecodeError:
-        logger.error("Error al parsear metadata_pdf.json, se usará categoria por defecto")
+        except Exception:
+            logger.warning("Error leyendo metadatos de PDF proporcionados; usando categoria por defecto")
 
     textos_hijos = [item["texto_vectorizable"] for item in chunks]
     metadatas = []
@@ -152,7 +155,8 @@ def insertar_texto(texto, nombre_pdf, modelo_embeddings, collection):
         ids.append(f"{nombre_pdf}_child_{idx}")
             
     # Generar Embeddings (Solo de los HIJOS)
-    embeddings = utils.generar_embeddings(modelo_embeddings, textos_hijos)
+    # Generar embeddings en batches para mayor eficiencia (ajustable)
+    embeddings = utils.generar_embeddings(modelo_embeddings, textos_hijos, batch_size=64)
         
     # Guardar en DB
     try:
@@ -168,12 +172,10 @@ def insertar_texto(texto, nombre_pdf, modelo_embeddings, collection):
         logger.error(f"Error al insertar en ChromaDB: {str(e)}")
         logger.error(traceback.format_exc())
 
-def insertar_imagen(model_clip, model_emb, device, collection):
-    try:
-        with open("data/metadata_imagenes.json", "r", encoding="utf-8") as f:
-            metadata_imagenes = json.load(f)
-    except FileNotFoundError:
-        logger.warning("No se encontró data/metadata_imagenes.json")
+def insertar_imagen(model_clip, clip_processor, device, collection, metadata_imagenes=None):
+    if not metadata_imagenes:
+        logger.warning("No se proporcionaron metadatos de imágenes; nada que procesar")
+        return
 
     logger.info(f"Procesando {len(metadata_imagenes)} imágenes desde metadatos")
 
@@ -187,22 +189,20 @@ def insertar_imagen(model_clip, model_emb, device, collection):
 
             image = Image.open(ruta).convert("RGB")
 
-            inputs = model_clip.processor(
+            """REVISAR ESTO Y HACER SINO CON UN MODELO DE SENTENCE TRANSFORMESS
+            inputs = clip_processor(
                 images=image,
                 return_tensors="pt"
             ).to(device)
 
-            # Generar feature CLIP
+            # Generar feature CLIP (usaremos esto directamente como embedding)
             with torch.no_grad():
-                features = model_clip.model.get_image_features(**inputs)
-                vector_clip = features[0].cpu().numpy().tolist()
-
-            # Generar embedding final usando tu función
-            embedding = utils.generar_embeddings(model_emb, [vector_clip])[0]
+                features = model_clip.get_image_features(**inputs)
+                vector_clip = features[0].cpu().numpy().tolist()"""
 
             collection.add(
                 ids=[str(uuid.uuid4())],
-                embeddings=[embedding],
+                embeddings=[vector_clip],
                 documents=[meta["nombre_archivo"]],
                 metadatas=[{
                     "pdf_origen": meta["pdf_origen"],
@@ -219,20 +219,30 @@ def insertar_imagen(model_clip, model_emb, device, collection):
             )
 
 def main():
-    print("\n RAG MULTIMODAL - CREANDO LA BASE DE DATOS \n")
+    logger.info("\n RAG MULTIMODAL - CREANDO LA BASE DE DATOS \n")
 
     #Preguntar si borramos BD --> para ir haciendo pruebas
     resp = input("¿Borrar base de datos y empezar de cero? (s/n): ").lower()
     reset_db = (resp == 's')
     
     # Cargar modelos y crear db
-    model_emb, model_clip, device = cargar_modelos()
+    model_emb, model_clip, clip_processor, device = cargar_modelos()
     collections = crear_db(reset_db)
     
+    # Cargar metadatos de PDFs una sola vez
+    metadatos_pdf = []
+    try:
+        with open("data/metadata_pdf.json", "r", encoding="utf-8") as f:
+            metadatos_pdf = json.load(f)
+    except FileNotFoundError:
+        logger.warning("No se encontró data/metadata_pdf.json; se usará categoria por defecto para todos los PDFs")
+    except json.JSONDecodeError:
+        logger.error("Error al parsear data/metadata_pdf.json; se usará categoria por defecto para todos los PDFs")
+
     # Procesar pdfs
     pdfs = list(PDFS_DIR.glob("*.pdf"))
     if not pdfs:
-        print(f"Error: No hay PDFs en {PDFS_DIR}")
+        logger.error(f"Error: No hay PDFs en {PDFS_DIR}")
         return
     
     for pdf in pdfs:
@@ -241,20 +251,31 @@ def main():
         try:
             # Usar función de preprocesado
             texto_completo = leer_pdf(str(pdf))
-            # Insertar texto
-            insertar_texto(texto_completo, nombrePDF, model_emb, collections["pdfs"])
+            # Insertar texto (usar metadatos cargados en main)
+            insertar_texto(texto_completo, nombrePDF, model_emb, collections["pdfs"], metadatos_pdf)
         except Exception as e:
             logger.error(f"Error procesando {nombrePDF}: {e}")
             continue
 
     
+    # Cargar metadatos de imágenes una sola vez
+    metadata_imagenes = []
+    try:
+        with open("data/metadata_imagenes.json", "r", encoding="utf-8") as f:
+            metadata_imagenes = json.load(f)
+    except FileNotFoundError:
+        logger.warning("No se encontró data/metadata_imagenes.json; no se procesarán imágenes")
+    except json.JSONDecodeError:
+        logger.error("Error al parsear data/metadata_imagenes.json; no se procesarán imágenes")
+    
     # Procesar imágenes
     logger.info("\nProcesando imágenes...")
     insertar_imagen(
         model_clip=model_clip,
+        clip_processor=clip_processor,
         device=device,
-        model_emb=model_emb,
-        collection=collections["imagenes"]
+        collection=collections["imagenes"],
+        metadata_imagenes=metadata_imagenes
     )
     logger.info("\n PROCESAMIENTO TERMINADO")
     logger.info(f"Base de datos guardada en: {DB_PATH}")

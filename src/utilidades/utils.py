@@ -4,9 +4,18 @@ from loguru import logger
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from typing import List
 
-def generar_embeddings(model, textos: List[str]) -> List[List[float]]:
-    """Genera embeddings usando el modelo SentenceTransformer dado."""
-    return model.encode(textos, normalize_embeddings=True).tolist()
+def generar_embeddings(model, textos: List[str], batch_size: int = 64) -> List[List[float]]:
+    """Genera embeddings usando el modelo SentenceTransformer dado.
+
+    Args:
+        model: SentenceTransformer instance.
+        textos: lista de strings a convertir.
+        batch_size: tamaño de batch para `model.encode`.
+
+    Returns:
+        Lista de vectores (listas de floats).
+    """
+    return model.encode(textos, batch_size=batch_size, normalize_embeddings=True).tolist()
 
 def project_root() -> Path:
     return Path(__file__).resolve().parents[2]
@@ -39,7 +48,7 @@ def limpiar_texto(texto: str) -> str:
 
     return t
 
-def hacer_chunking(texto: str, chunk_size=200, overlap=50) -> list:
+def hacer_chunking(texto: str, chunk_size, overlap) -> list:
     """
     Usa LangChain para dividir el texto en chunks.
 
@@ -78,14 +87,14 @@ def chunk_padre_hijo(texto: str) -> list:
     """
     chunks_procesados = []
 
-    chunks_padre = hacer_chunking(texto, chunk_size=2000, overlap=200)
+    chunks_padre = hacer_chunking(texto, chunk_size=2000, overlap=200) #4000 y 200
     
     logger.info(f"Generados {len(chunks_padre)} Chunks padre.")
     
     total_hijos = 0
 
     for i, texto_padre in enumerate(chunks_padre):
-        chunks_hijo = hacer_chunking(texto_padre, chunk_size=400, overlap=50)
+        chunks_hijo = hacer_chunking(texto_padre, chunk_size=400, overlap=50) #1000 y 100
         total_hijos += len(chunks_hijo)
 
         for texto_hijo in chunks_hijo:
