@@ -13,8 +13,8 @@ from utilidades import utils
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
-    page_title="Asistente RAG Bizkaia",
-    page_icon="",
+    page_title="Asistente RAG Autonomos Bizkaia",
+    page_icon="🍁",
     layout="wide",
 )
 
@@ -69,8 +69,19 @@ ST_STYLE = """
         background: linear-gradient(135deg, #FC7171 0%, #FFD5D5 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
-        font-weight: 350 !important;
+        font-weight: 400 !important;
         font-size: 2rem !important;
+        letter-spacing: -0.5px;
+        margin-top: -1.5rem !important;
+        text-align: center !important;
+    }
+    h5 {
+        background: linear-gradient(135deg, #FC7171 0%, #FFD5D5 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        font-weight: 350 !important;
+        font-size: 1rem !important;
+        margin-top: -1.5rem !important;
         letter-spacing: -0.5px;
         text-align: center !important;
     }
@@ -382,6 +393,8 @@ async def ejecutar_streaming(prompt, chat_container):
     st.session_state.last_sources = []
     st.session_state.last_images = []
     
+    response_placeholder = None
+
     with chat_container:
         # 1. Contenedor para la animación de "Pensando"
         thinking_placeholder = st.empty()
@@ -404,8 +417,16 @@ async def ejecutar_streaming(prompt, chat_container):
                     if not line: continue
                     
                     if line.startswith("data: "):
-                        token = line.replace("data: ", "")
-                        full_response += token
+                        try:
+                            # Cortamos "data: " (6 caracteres) de forma segura
+                            json_str = line[6:]
+                            token = json.loads(json_str)
+                            full_response += token
+                        except json.JSONDecodeError as e:
+                            print(f"Error decodificando JSON: {e} | Linea: {line}")
+                            # Fallback: intentar texto plano si no es JSON (para compatibilidad)
+                            token = line.replace("data: ", "")
+                            full_response += token
                         
                         # 3. Al recibir el PRIMER TOKEN:
                         # Borramos la animación de "Pensando" y creamos el placeholder de respuesta
@@ -414,9 +435,12 @@ async def ejecutar_streaming(prompt, chat_container):
                             with chat_container:
                                 response_placeholder = st.empty()  # Crear después
                         
+                        # Limpieza de artefactos: eliminar </div> si aparece al final
+                        full_response_clean = full_response.replace("</div>", "")
+
                         # 4. Convertir markdown a HTML progresivamente durante el streaming
                         import markdown
-                        content_html = markdown.markdown(full_response)
+                        content_html = markdown.markdown(full_response_clean)
                         
                         # Renderizar con cursor parpadeante
                         streaming_html = f'''
@@ -441,11 +465,18 @@ async def ejecutar_streaming(prompt, chat_container):
                         st.session_state.last_images = meta_json.get("imagenes", [])
                         st.session_state.debug_logs.append(meta_json["debug"])
                         
-        # 5. Finalización: Limpiar placeholders y renderizar mensaje final estático
+        # 5. Finalización
         thinking_placeholder.empty()
+        
+        if not full_response:
+             full_response = "Lo siento, parece que no tengo información suficiente en este momento para responder a tu pregunta."
+
         if response_placeholder is not None:
             response_placeholder.empty()
         
+        # Limpieza final de artefactos
+        full_response = full_response.replace("</div>", "")
+
         render_message(
             "assistant", 
             full_response, 
@@ -497,10 +528,11 @@ def main():
         asyncio.run(ejecutar_streaming(prompt, chat_container))
 
     with st.sidebar:
+        st.markdown("<h5>🍁 Asistente Autonomos Bizkaia</h5>", unsafe_allow_html=True)
         st.markdown("<h4>Panel de Control</h4>", unsafe_allow_html=True)
         
         status_color = f"<span style='color:lime'>{st.session_state.api_status}</span>" if st.session_state.api_status == "Conectado" else f"<span style='color:red'>{st.session_state.api_status}</span>"
-        st.markdown(f"<h5 style='text-align: center;'>API: {status_color}</h5>", unsafe_allow_html=True)
+        st.markdown(f"<h5>API: <b><i>{status_color}</i></b></h5>", unsafe_allow_html=True)
         
         if st.session_state.debug_logs:
             last_log = st.session_state.debug_logs[-1]
@@ -522,7 +554,7 @@ def main():
             # Mostrar información de imágenes
             imagenes = st.session_state.get("last_images", [])
             if imagenes:
-                st.subheader(f"🖼️ Imágenes ({len(imagenes)})")
+                st.subheader(f"Imágenes ({len(imagenes)})")
                 for img in imagenes:
                     with st.expander(f"{img.get('nombre_archivo', 'imagen')}"):
                         st.caption(f"Origen: {img.get('pdf_origen', 'N/A')}")

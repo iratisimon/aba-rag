@@ -3,8 +3,8 @@ que se van a recoger en la base de datos"""
 import json
 import os
 from loguru import logger
-#from utilidades import utils
-import utils
+from utilidades import utils
+# import utils
 import glob
 import fitz
 from openai import OpenAI

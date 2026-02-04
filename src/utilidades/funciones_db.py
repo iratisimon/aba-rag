@@ -11,13 +11,13 @@ from PIL import Image
 import torch
 from transformers import CLIPModel, CLIPProcessor
 from sentence_transformers import SentenceTransformer, util
-#from utilidades import utils
-import utils
+from utilidades import utils
+# import utils
 import os
 from loguru import logger
 import json
-#from utilidades.funciones_preprocesado import leer_pdf
-from funciones_preprocesado import leer_pdf
+from utilidades.funciones_preprocesado import leer_pdf
+# from funciones_preprocesado import leer_pdf
 import traceback
 import uuid
 import sys

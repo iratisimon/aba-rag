@@ -25,10 +25,13 @@ from utilidades import prompts
 
 load_dotenv()
 
+import torch
+from transformers import CLIPModel, CLIPProcessor
+
 # Validacion de variables de entorno
 REQUIRED_VARS = [
-    "DB_PATH", "COLLECTION_NAME", "MODELO_EMBEDDINGS", 
-    "LLM_BASE_URL", "LLM_API_KEY", "MODELO_LLM", "MODELO_FAST"
+    "DB_PATH", "COLLECTION_NAME_PDFS", "COLLECTION_NAME_IMAGENES", "MODELO_EMBEDDINGS", 
+    "LLM_BASE_URL", "LLM_API_KEY", "MODELO_LLM", "MODELO_FAST", "MODELO_CLIP"
 ]
 
 missing_vars = [var for var in REQUIRED_VARS if not os.getenv(var)]
@@ -42,15 +45,27 @@ model_emb       = None
 rerank_model    = None
 llm_fast        = None
 llm_heavy       = None
+model_clip      = None
+clip_processor  = None
+device          = None
 
 # Carga todas las herramientas necesarias al iniciar la API
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # El código aquí se ejecuta al INICIAR la API
-    global model_emb, rerank_model, llm_fast, llm_heavy
-    dispositivo = "cuda" if os.getenv("USE_CUDA") == "true" else "cpu"
-    model_emb = SentenceTransformer(os.getenv("MODELO_EMBEDDINGS"), device=dispositivo)
-    rerank_model = CrossEncoder('BAAI/bge-reranker-v2-m3', device=dispositivo)
+    global model_emb, rerank_model, llm_fast, llm_heavy, model_clip, clip_processor, device
+    device = "cuda" if os.getenv("USE_CUDA") == "true" else "cpu"
+    
+    logger.info(f"Cargando modelos en dispositivo: {device.upper()}")
+    
+    model_emb = SentenceTransformer(os.getenv("MODELO_EMBEDDINGS"), device=device)
+    rerank_model = CrossEncoder('BAAI/bge-reranker-v2-m3', device=device)
+    
+    # Cargar CLIP
+    logger.info("Cargando modelo CLIP...")
+    model_clip = CLIPModel.from_pretrained(os.getenv("MODELO_CLIP")).to(device)
+    clip_processor = CLIPProcessor.from_pretrained(os.getenv("MODELO_CLIP"))
+    
     llm_fast = ChatOpenAI(
         base_url=os.getenv("LLM_BASE_URL"), 
         api_key=os.getenv("LLM_API_KEY"), 
@@ -62,7 +77,8 @@ async def lifespan(app: FastAPI):
         base_url=os.getenv("LLM_BASE_URL"), 
         api_key=os.getenv("LLM_API_KEY"), 
         model=os.getenv("MODELO_LLM"), 
-        temperature=0.2
+        temperature=0.2,
+        streaming=True
     )
 
     logger.info("Modelos cargados y listos.")
@@ -70,6 +86,7 @@ async def lifespan(app: FastAPI):
     yield
     # El código aquí se ejecuta al CERRAR la API
     logger.info("Cerrando servicios y liberando memoria...")
+
 
 class GraphState(TypedDict):
     """
@@ -85,7 +102,7 @@ class GraphState(TypedDict):
     debug_pipeline: List[str]
     destino: Optional[str]
 
-def generar_hyde(pregunta, client_llm)->str:
+async def generar_hyde(pregunta, client_llm)->str:
     """
     Alucina una respuesta para mejorar la búsqueda.
 
@@ -98,12 +115,12 @@ def generar_hyde(pregunta, client_llm)->str:
     """
     system_prompt = prompts.get_hyde_prompt()
     try:
-        r = client_llm.invoke([{"role": "system", "content": system_prompt}, {"role": "user", "content": pregunta}])
+        r = await client_llm.ainvoke([{"role": "system", "content": system_prompt}, {"role": "user", "content": pregunta}])
         return r.content
     except: 
         return pregunta
 
-def nodo_router(state: GraphState):
+async def nodo_router(state: GraphState):
     """
     Nodo router que decide si es saludo o pregunta.
     """
@@ -116,10 +133,11 @@ def nodo_router(state: GraphState):
     user_prompt =   f"PREGUNTA DEL USUARIO: '{pregunta}'"
 
     try:
-        clasificacion = llm.invoke([
+        response = await llm.ainvoke([
             {"role": "system", "content": system_prompt}, 
             {"role": "user", "content": user_prompt}
-        ]).content.strip().replace("'", "").replace('"', "")
+        ])
+        clasificacion = response.content.strip().replace("'", "").replace('"', "")
     except Exception as e:
         logger.error(f"Error Router: {e}")
         clasificacion = "otros"
@@ -128,7 +146,7 @@ def nodo_router(state: GraphState):
 
     if clasificacion == "SALUDO":
         logger.info("[ROUTER] Detectado SALUDO.")
-        state["respuesta_final"] = "¡Hola! Estoy aquí para ayudarte con temas de empleo, ayudas, subvenciones y temas fiscales. Pregúntame lo que quieras."
+        state["respuesta_final"] = "¡Hola! Soy un asistente virtual para autónomos en Bizkaia. Estoy aquí para ayudarte con temas de empleo, ayudas, subvenciones y temas fiscales. Pregúntame lo que quieras."
         state["debug_pipeline"].append("[ROUTER] Detectado SALUDO.")
         state["destino"] = "fin"
         return state
@@ -145,7 +163,7 @@ def nodo_router(state: GraphState):
     state["destino"] = "buscador"
     return state
 
-def nodo_buscador(state: GraphState):
+async def nodo_buscador(state: GraphState):
     """
     Nodo buscador que aplica filtro por categoría y HyDE.
     Ahora busca en AMBAS colecciones: texto (PDFs) e imágenes.
@@ -157,7 +175,7 @@ def nodo_buscador(state: GraphState):
     
     filtro = {"categoria": cat} if cat != "otros" else None
     
-    doc_hyde = generar_hyde(pregunta, llm_fast)
+    doc_hyde = await generar_hyde(pregunta, llm_fast)
     state["debug_pipeline"].append(f"[BUSCADOR] HyDE imaginó: '{doc_hyde[:50]}...'")
 
     q_emb = utils.generar_embeddings(model_emb, [doc_hyde])
@@ -206,21 +224,43 @@ def nodo_buscador(state: GraphState):
 
     state["contexto_fuentes"] = fuentes
     
-    # ========== BÚSQUEDA EN COLECCIÓN DE IMÁGENES ==========
+    # ========== BÚSQUEDA EN COLECCIÓN DE IMÁGENES (CLIP) ==========
     try:
         col_imagenes = funciones_db.obtener_coleccion("imagenes")
+        logger.info(f"[BUSCADOR] Buscando imágenes por filtro '{filtro}' Uusando CLIP")
         
-        logger.info(f"[BUSCADOR] Buscando imágenes por filtro '{filtro}'")
+        # Generar embedding de texto con CLIP para la pregunta
+        # Usamos la pregunta original o una versión corta, ya que CLIP prefiere textos cortos
+        texto_query_clip = pregunta[:77] # CLIP suele tener limite de contexto de 77 tokens
+        
+        inputs = clip_processor(text=texto_query_clip, return_tensors="pt", padding=True).to(device)
+        with torch.no_grad():
+            text_features = model_clip.get_text_features(**inputs)
+            
+            # Robustez: verificar si devuelve un objeto en lugar de tensor
+            if not isinstance(text_features, torch.Tensor):
+                if hasattr(text_features, "text_embeds"):
+                    text_features = text_features.text_embeds
+                elif hasattr(text_features, "pooler_output"):
+                    # Fallback: Extraer pooler_output y proyectar si es necesario
+                    # Esto maneja el caso donde get_text_features devuelve el output raw del text_model
+                    text_features = text_features.pooler_output
+                    if hasattr(model_clip, "text_projection"):
+                        text_features = model_clip.text_projection(text_features)
+            
+            # Normalizar es importante para CLIP si usamos distancia coseno
+            text_features = text_features / text_features.norm(p=2, dim=-1, keepdim=True)
+            q_emb_clip = text_features.cpu().numpy().tolist()
+
         res_imagenes = col_imagenes.query(
-            query_embeddings=q_emb,
-            n_results=3,  # Limitamos a 3 imágenes máximo
+            query_embeddings=q_emb_clip,
+            n_results=3,
             where=filtro
         )
         
         imagenes = []
         if res_imagenes['metadatas'][0]:
             for i, meta in enumerate(res_imagenes['metadatas'][0]):
-                # Extraer distancias si están disponibles
                 score = res_imagenes.get('distances', [[0]*len(res_imagenes['metadatas'][0])])[0][i]
                 
                 imagenes.append({
@@ -240,6 +280,7 @@ def nodo_buscador(state: GraphState):
         
     except Exception as e:
         logger.warning(f"[BUSCADOR] Error buscando imágenes: {e}")
+        state["debug_pipeline"].append(f"[BUSCADOR] Error buscando imágenes: {e}")
         state["imagenes_relacionadas"] = []
     
     return state
@@ -270,7 +311,7 @@ def nodo_reranker(state: GraphState):
     
     # Filtro de corte: Solo nos quedamos con los que superen un umbral (ej: 0.1 o 0.3)
     # y limitamos a los 3 mejores para no saturar el contexto del LLM
-    umbral = -0.5  # Umbral más permisivo para no filtrar todos los documentos
+    umbral = 0.1  # Umbral más permisivo para no filtrar todos los documentos
     docs_reordenados = []
     metas_reordenadas = []
     
@@ -288,7 +329,7 @@ def nodo_reranker(state: GraphState):
     
     return state
 
-def nodo_evaluador(state: GraphState):
+async def nodo_evaluador(state: GraphState):
     """
     Evalúa si los documentos recuperados son relevantes para la pregunta.
     """
@@ -308,10 +349,15 @@ def nodo_evaluador(state: GraphState):
     
     user_prompt = f"PREGUNTA: {pregunta}\n\nDOCUMENTOS:\n{docs}"
     
-    calificacion = llm.invoke([
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_prompt}
-    ]).content.strip().upper()
+    try:
+        calificacion = await llm.ainvoke([
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ])
+        calificacion = calificacion.content.strip().upper()
+    except Exception as e:
+        logger.error(f"Error Evaluador: {e}")
+        calificacion = "NO"
 
     if "SÍ" in calificacion or "SI" in calificacion:
         state["debug_pipeline"].append("[EVALUADOR] Documentos válidos. Procediendo a generar.")
@@ -320,11 +366,13 @@ def nodo_evaluador(state: GraphState):
     else:
         state["debug_pipeline"].append("[EVALUADOR] Documentos irrelevantes. Abortando generación.")
         logger.info("[EVALUADOR] Documentos irrelevantes. Abortando generación.")
+        # FIX: Establecer respuesta final para que no llegue vacía al cliente
+        state["respuesta_final"] = "Lo siento, tras analizar los documentos recuperados, no he encontrado información suficientemente relevante para responder a tu pregunta específica."
         state["destino"] = "sin_informacion"
     
     return state
 
-def nodo_generador(state: GraphState):
+async def nodo_generador(state: GraphState):
     """
     Nodo generador que redacta la respuesta final.
     """
@@ -349,14 +397,14 @@ def nodo_generador(state: GraphState):
                     incluye pasos si es necesario, y asegúrate de que tu respuesta sea útil y práctica.
                     """
 
-    llm = llm_heavy
+    # Configurar el LLM con max_tokens usando bind() para que se aplique también en streaming
+    llm_configured = llm_heavy.bind(max_tokens=2000)
     
-    respuesta = llm.invoke(
+    respuesta = await llm_configured.ainvoke(
         [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
-        ],
-        max_tokens=1500  # Forzar respuestas más largas
+        ]
     )
     state["debug_pipeline"].append(f"[GENERADOR] Respuesta generada: {respuesta.content[:100]}")
     logger.info(f"[GENERADOR] Respuesta generada: {respuesta.content[:100]}")
@@ -473,7 +521,7 @@ async def chat_streaming_endpoint(request: PreguntaRequest):
             if event["event"] == "on_chat_model_stream":
                 content = event["data"]["chunk"].content
                 if content:
-                    yield f"data: {content}\n\n" # Formato Server-Sent Events simplificado
+                    yield f"data: {json.dumps(content)}\n\n" # Usar JSON para escapar newlines
                     content_yielded = True
             
             # 2. Capturamos el estado final cuando el grafo termina
@@ -482,7 +530,7 @@ async def chat_streaming_endpoint(request: PreguntaRequest):
         
         # 2b. Fallback: Si no hubo streaming (ej: Saludo estático), enviamos la respuesta final de golpe
         if not content_yielded and last_state and last_state.get("respuesta_final"):
-            yield f"data: {last_state.get('respuesta_final')}\n\n"
+            yield f"data: {json.dumps(last_state.get('respuesta_final'))}\n\n"
 
         # 3. Enviamos los metadatos al final como un último mensaje
         if last_state:
