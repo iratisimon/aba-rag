@@ -64,14 +64,9 @@ def cargar_modelos():
 
     # 2. Modelo de Visión (CLIP)
     logger.info("Cargando CLIP (Visión)...")
-    model_clip = CLIPModel.from_pretrained(MODELO_CLIP)
-    model_clip.to(device)
+    model_clip = SentenceTransformer(MODELO_CLIP)
     
-    # 3. Processor de CLIP (para procesar imágenes)
-    logger.info("Cargando CLIP Processor...")
-    clip_processor = CLIPProcessor.from_pretrained(MODELO_CLIP)
-    
-    return model_emb, model_clip, clip_processor, device
+    return model_emb, model_clip
 
 def crear_db(reset=False):
     """
@@ -155,7 +150,6 @@ def insertar_texto(texto, nombre_pdf, modelo_embeddings, collection, metadatos_j
         ids.append(f"{nombre_pdf}_child_{idx}")
             
     # Generar Embeddings (Solo de los HIJOS)
-    # Generar embeddings en batches para mayor eficiencia (ajustable)
     embeddings = utils.generar_embeddings(modelo_embeddings, textos_hijos, batch_size=64)
         
     # Guardar en DB
@@ -172,7 +166,7 @@ def insertar_texto(texto, nombre_pdf, modelo_embeddings, collection, metadatos_j
         logger.error(f"Error al insertar en ChromaDB: {str(e)}")
         logger.error(traceback.format_exc())
 
-def insertar_imagen(model_clip, clip_processor, device, collection, metadata_imagenes=None):
+def insertar_imagen(model_clip, collection, metadata_imagenes=None):
     if not metadata_imagenes:
         logger.warning("No se proporcionaron metadatos de imágenes; nada que procesar")
         return
@@ -189,20 +183,11 @@ def insertar_imagen(model_clip, clip_processor, device, collection, metadata_ima
 
             image = Image.open(ruta).convert("RGB")
 
-            """REVISAR ESTO Y HACER SINO CON UN MODELO DE SENTENCE TRANSFORMESS
-            inputs = clip_processor(
-                images=image,
-                return_tensors="pt"
-            ).to(device)
-
-            # Generar feature CLIP (usaremos esto directamente como embedding)
-            with torch.no_grad():
-                features = model_clip.get_image_features(**inputs)
-                vector_clip = features[0].cpu().numpy().tolist()"""
+            embeddings = model_clip.encode([image], convert_to_numpy=True)
 
             collection.add(
                 ids=[str(uuid.uuid4())],
-                embeddings=[vector_clip],
+                embeddings=embeddings,
                 documents=[meta["nombre_archivo"]],
                 metadatas=[{
                     "pdf_origen": meta["pdf_origen"],
@@ -219,6 +204,7 @@ def insertar_imagen(model_clip, clip_processor, device, collection, metadata_ima
             )
 
 def main():
+    """
     logger.info("\n RAG MULTIMODAL - CREANDO LA BASE DE DATOS \n")
 
     #Preguntar si borramos BD --> para ir haciendo pruebas
@@ -226,7 +212,7 @@ def main():
     reset_db = (resp == 's')
     
     # Cargar modelos y crear db
-    model_emb, model_clip, clip_processor, device = cargar_modelos()
+    model_emb, model_clip = cargar_modelos()
     collections = crear_db(reset_db)
     
     # Cargar metadatos de PDFs una sola vez
@@ -272,14 +258,53 @@ def main():
     logger.info("\nProcesando imágenes...")
     insertar_imagen(
         model_clip=model_clip,
-        clip_processor=clip_processor,
-        device=device,
         collection=collections["imagenes"],
         metadata_imagenes=metadata_imagenes
     )
     logger.info("\n PROCESAMIENTO TERMINADO")
-    logger.info(f"Base de datos guardada en: {DB_PATH}")
+    logger.info(f"Base de datos guardada en: {DB_PATH}")"""
+    
+    logger.info("\n RAG MULTIMODAL - ACTUALIZANDO COLECCIÓN DE IMÁGENES \n")
 
+    # Cargar modelos
+    _, model_clip = cargar_modelos()  # Ignoramos embeddings de texto porque no tocamos PDFs
+
+    # Conectar con la base de datos
+    client = chromadb.PersistentClient(path=DB_PATH)
+
+    # Borrar colección de imágenes si existe
+    try:
+        client.delete_collection(COLLECTION_NAME_IMAGENES)
+        logger.info(f"Colección '{COLLECTION_NAME_IMAGENES}' eliminada.")
+    except Exception as e:
+        logger.warning(f"No se pudo eliminar '{COLLECTION_NAME_IMAGENES}': {e}")
+
+    # Crear nueva colección de imágenes
+    collection_imagenes = client.create_collection(COLLECTION_NAME_IMAGENES)
+    logger.info(f"Colección '{COLLECTION_NAME_IMAGENES}' creada de nuevo.")
+
+    # Cargar metadatos de imágenes
+    metadata_imagenes = []
+    try:
+        with open("data/metadata_imagenes.json", "r", encoding="utf-8") as f:
+            metadata_imagenes = json.load(f)
+    except FileNotFoundError:
+        logger.warning("No se encontró data/metadata_imagenes.json; no se procesarán imágenes")
+        return
+    except json.JSONDecodeError:
+        logger.error("Error al parsear data/metadata_imagenes.json; no se procesarán imágenes")
+        return
+
+    # Procesar e insertar imágenes usando CLIP
+    logger.info("\nProcesando imágenes...")
+    insertar_imagen(
+        model_clip=model_clip,
+        collection=collection_imagenes,
+        metadata_imagenes=metadata_imagenes
+    )
+
+    logger.info("\nPROCESAMIENTO TERMINADO")
+    logger.info(f"Base de datos guardada en: {DB_PATH}")
 
 if __name__ == "__main__":
     main()
