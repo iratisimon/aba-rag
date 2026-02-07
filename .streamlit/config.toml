@@ -1,0 +1,10 @@
+# Forzar tema claro para que la app se vea igual en todos los equipos.
+# Sin esto, Streamlit usa el tema del sistema (modo oscuro/claro) y algunas
+# partes se ven oscuras cuando el sistema está en dark mode.
+[theme]
+base = "light"
+primaryColor = "#F63B3B"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#FFF6F6"
+textColor = "#3B1E1E"
+font = "sans serif"

@@ -1,10 +1,12 @@
+import io
 import os
 import sys
 import time
 from loguru import logger
 from typing import List, Optional, TypedDict
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from pydantic import BaseModel
+from PIL import Image
 from dotenv import load_dotenv
 import chromadb
 from sentence_transformers import SentenceTransformer
@@ -259,12 +261,15 @@ async def nodo_buscador(state: GraphState):
         
         imagenes = []
         if res_imagenes['metadatas'][0]:
+            imagenes_dir = utils.project_root() / "data" / "documentos" / "imagenes"
             for i, meta in enumerate(res_imagenes['metadatas'][0]):
                 score = res_imagenes.get('distances', [[0]*len(res_imagenes['metadatas'][0])])[0][i]
-                
+                nombre_archivo = meta.get("nombre_archivo", "")
+                # Usar siempre ruta local (nombre_archivo) para que funcione en cualquier equipo
+                ruta_local = str(imagenes_dir / nombre_archivo) if nombre_archivo else ""
                 imagenes.append({
-                    "ruta_imagen": meta.get("ruta_imagen", ""),
-                    "nombre_archivo": meta.get("nombre_archivo", ""),
+                    "ruta_imagen": ruta_local,
+                    "nombre_archivo": nombre_archivo,
                     "pdf_origen": meta.get("pdf_origen", ""),
                     "pagina": meta.get("pagina", 0),
                     "score": float(score) if score else 0.0
@@ -506,6 +511,53 @@ class RespuestaResponse(BaseModel):
 
 @app.get("/health")
 def health(): return {"status": "OK", "version": "1.0"}
+
+
+@app.post("/buscar-imagenes", response_model=List[Imagen])
+async def buscar_imagenes_similares(file: UploadFile = File(...)):
+    """
+    Sube una imagen y devuelve las imágenes de la base de datos más similares (CLIP).
+    """
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="El archivo debe ser una imagen (jpg, png, etc.).")
+    try:
+        contents = await file.read()
+        image = Image.open(io.BytesIO(contents)).convert("RGB")
+    except Exception as e:
+        logger.warning(f"Error leyendo imagen: {e}")
+        raise HTTPException(status_code=400, detail="No se pudo procesar la imagen.")
+    try:
+        col_imagenes = funciones_db.obtener_coleccion("imagenes")
+    except Exception as e:
+        logger.warning(f"Error obteniendo colección imágenes: {e}")
+        raise HTTPException(status_code=503, detail="Base de datos de imágenes no disponible.")
+    inputs = clip_processor(images=image, return_tensors="pt").to(device)
+    with torch.no_grad():
+        features = model_clip.get_image_features(**inputs)
+        if hasattr(features, "pooler_output"):
+            features = features.pooler_output
+        elif hasattr(features, "image_embeds"):
+            features = features.image_embeds
+        if not isinstance(features, torch.Tensor):
+            features = features[0] if isinstance(features, (list, tuple)) else features
+        features = features / features.norm(p=2, dim=-1, keepdim=True)
+        q_emb = features.cpu().numpy().tolist()
+    res = col_imagenes.query(query_embeddings=q_emb, n_results=3)
+    imagenes_dir = utils.project_root() / "data" / "documentos" / "imagenes"
+    out = []
+    if res["metadatas"] and res["metadatas"][0]:
+        for i, meta in enumerate(res["metadatas"][0]):
+            nombre_archivo = meta.get("nombre_archivo", "")
+            score = res.get("distances", [[0] * len(res["metadatas"][0])])[0][i]
+            ruta_local = str(imagenes_dir / nombre_archivo) if nombre_archivo else ""
+            out.append(Imagen(
+                ruta_imagen=ruta_local,
+                nombre_archivo=nombre_archivo,
+                pdf_origen=meta.get("pdf_origen", ""),
+                pagina=meta.get("pagina", 0),
+                score=float(score) if score is not None else 0.0,
+            ))
+    return out
 
 @app.post("/chat", response_model=RespuestaResponse)
 async def chat_endpoint(request: PreguntaRequest):

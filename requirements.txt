@@ -1,16 +1,17 @@
 # Core
-streamlit
-fastapi
-uvicorn
-pydantic
+streamlit>=1.28
+fastapi>=0.104
+uvicorn[standard]>=0.24
+pydantic>=2
 python-dotenv
+python-multipart
 loguru
 
 # AI & RAG
 openai
-langchain_openai
+langchain-openai
 langgraph
-langchain_text_splitters
+langchain-text-splitters
 chromadb
 sentence-transformers
 transformers

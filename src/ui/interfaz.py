@@ -11,6 +11,9 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 from api.api import app_graph
 from utilidades import utils
 
+# Ruta base de imágenes (relativa al proyecto) para no depender de rutas absolutas de otro PC
+IMAGENES_DIR = Path(__file__).resolve().parents[2] / "data" / "documentos" / "imagenes"
+
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
     page_title="Asistente Autónomos Bizkaia",
@@ -435,7 +438,9 @@ def render_message(role, content, sources=None, imagenes=None):
                     nombre = img.get("nombre_archivo", "imagen")
                     pdf_origen = img.get("pdf_origen", "")
                     pagina = img.get("pagina", 0)
-                    
+                    # Si la ruta viene de otro PC (absoluta), buscar por nombre en la carpeta local
+                    if not ruta or not os.path.exists(ruta):
+                        ruta = str(IMAGENES_DIR / nombre)
                     if os.path.exists(ruta):
                         st.image(ruta, caption=f"{pdf_origen} (p.{pagina})", width="content")
                     else:
@@ -607,20 +612,22 @@ def main():
                         margin-left: 0 !important;
                     }
                     
+                    /* Chat input abajo para no tapar las sugerencias */
                     div[data-testid="stChatInput"] {
-                        bottom: 60vh !important;
-                        z-index: 1000;
+                        bottom: 24px !important;
+                        z-index: 100;
                         width: 700px !important;
                         max-width: 700px !important;
                         margin: 0 auto !important;
                     }
 
-                    /* Contenedor principal de la landing */
+                    /* Contenedor principal de la landing: padding abajo para que las sugerencias no queden bajo el input */
                     .full-landing-view {
                         display: flex;
                         flex-direction: column;
                         align-items: flex-start;
                         width: 100%;
+                        padding-bottom: 140px !important;
                     }
                 </style>
             """, unsafe_allow_html=True)
@@ -635,9 +642,6 @@ def main():
                 </div>
             ''', unsafe_allow_html=True)
             
-            # Espacio reservado para el input que está flotando (bottom: 45vh)
-            st.markdown('<div style="height: 10vh;"></div>', unsafe_allow_html=True)
-            
             # Sugerencias
             sugerencias = [
                 {"texto": "¿Qué deducciones puedo aplicar como autónomo?"},
@@ -646,6 +650,8 @@ def main():
                 {"texto": "Ayudas para nuevos autónomos en Bizkaia"}
             ]
             
+            st.markdown('''<div class="suggestions-title" style="margin-bottom: 0.75rem; font-size: 0.9rem; font-weight: 400;">Puedes empezar por:</div>''', unsafe_allow_html=True)
+
             # Sugerencias alineadas
             cols = st.columns(2)
             
@@ -696,6 +702,49 @@ def main():
             if last_msg:
                 asyncio.run(ejecutar_streaming(last_msg, chat_container))
                 st.session_state.processing = False
+                st.rerun()
+
+    # Buscar por imagen en el área principal (como alternativa al chat input)
+    st.markdown("---")
+    st.caption("O sube una imagen para buscar similares en la base de datos")
+    img_upload = st.file_uploader(
+        "Imagen",
+        type=["png", "jpg", "jpeg"],
+        key="buscar_imagen_upload",
+        label_visibility="collapsed",
+    )
+    if img_upload is not None:
+        col_preview, col_btn = st.columns([3, 1])
+        with col_preview:
+            st.image(img_upload, caption="Tu imagen", use_container_width=True)
+        with col_btn:
+            if st.button("Buscar similares", key="btn_buscar_imagen", use_container_width=True):
+                with st.spinner("Buscando..."):
+                    try:
+                        api_base = "http://127.0.0.1:8000"
+                        resp = httpx.post(
+                            f"{api_base}/buscar-imagenes",
+                            files={"file": (img_upload.name, img_upload.getvalue(), img_upload.type or "image/jpeg")},
+                            timeout=30.0,
+                        )
+                        resp.raise_for_status()
+                        resultados = resp.json()
+                    except httpx.HTTPStatusError as e:
+                        st.error(f"Error de la API: {e.response.status_code}")
+                        resultados = []
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+                        resultados = []
+                # Añadir como un turno más en el chat (igual que con el chat input)
+                st.session_state.messages.append({
+                    "role": "user",
+                    "content": f"Busqué por imagen: {img_upload.name}",
+                })
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": f"Estas son las **{len(resultados)}** imágenes más similares en la base de datos:" if resultados else "No se encontraron imágenes similares.",
+                    "imagenes": resultados,
+                })
                 st.rerun()
 
     if prompt := st.chat_input("Escribe tu consulta...", disabled=st.session_state.processing):
