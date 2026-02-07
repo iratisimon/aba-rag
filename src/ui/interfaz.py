@@ -802,25 +802,50 @@ def main():
                 st.divider()
                 st.subheader("Métricas de Calidad")
                 
-                c1, c2 = st.columns(2)
+                c1, c2, c3 = st.columns(3)
                 fidelidad = metricas.get("fidelidad")
                 relevancia = metricas.get("relevancia")
-                
+                hit_rate = metricas.get("hit_rate")
+                mrr = metricas.get("mrr")
+
                 with c1:
                     st.markdown("**Fidelidad**")
                     if fidelidad == 1:
                         st.success("✅ Fiel")
-                    else:
+                    elif fidelidad == 0:
                         st.error("⚠️ Alucinación")
-                        
+                    else:
+                        st.info("N/A")
+
                 with c2:
                     st.markdown("**Relevancia**")
-                    if relevancia >= 4:
-                        st.success(f"({relevancia}/5)")
-                    elif relevancia >= 3:
-                        st.warning(f"({relevancia}/5)")
+                    if isinstance(relevancia, (int, float)):
+                        if relevancia >= 4:
+                            st.success(f"({relevancia}/5)")
+                        elif relevancia >= 3:
+                            st.warning(f"({relevancia}/5)")
+                        else:
+                            st.error(f"({relevancia}/5)")
                     else:
-                        st.error(f"({relevancia}/5)")
+                        st.info("N/A")
+
+                with c3:
+                    st.markdown("**Retrieval**")
+                    if hit_rate is not None:
+                        try:
+                            st.metric("Hit Rate @3", f"{hit_rate*100:.1f}%")
+                        except Exception:
+                            st.write(f"Hit Rate: {hit_rate}")
+                    else:
+                        st.info("Hit Rate: N/A")
+
+                    if mrr is not None:
+                        try:
+                            st.metric("MRR", f"{mrr:.3f}")
+                        except Exception:
+                            st.write(f"MRR: {mrr}")
+                    else:
+                        st.info("MRR: N/A")
         else:
             st.info("Realiza una consulta para ver el flujo de datos.")
 

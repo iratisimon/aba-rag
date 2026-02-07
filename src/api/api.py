@@ -28,6 +28,12 @@ from utilidades import prompts
 import torch
 from transformers import CLIPModel, CLIPProcessor
 
+# Definir la ruta del golden set usando la variable de entorno si está disponible
+GOLDEN_SET_FILE = os.getenv(
+    "GOLDEN_SET_FILE",
+    str(utils.project_root() / "src" / "golden_set_automatico.jsonl")
+)
+
 # Validacion de variables de entorno
 REQUIRED_VARS = [
     "DB_PATH", "COLLECTION_NAME_PDFS", "COLLECTION_NAME_IMAGENES", "MODELO_EMBEDDINGS", 
@@ -439,13 +445,45 @@ async def nodo_calidad(state: GraphState):
         llm_fast, os.getenv("MODELO_FAST")
     )
     
+    # Evaluar Retrieval
+    hit_rate = None
+    mrr = None
+    try:
+        # Obtener la colección de PDFs (misma que usa el buscador)
+        col_pdfs = funciones_db.obtener_coleccion("pdfs")
+
+        # Si hay un golden set en disco, cargarlo; si no, generarlo automáticamente.
+        golden_set = []
+        golden_file = os.getenv("GOLDEN_SET_FILE", GOLDEN_SET_FILE)
+        if os.path.exists(golden_file):
+            with open(golden_file, 'r', encoding='utf-8') as f:
+                golden_set = [json.loads(line) for line in f if line.strip()]
+            logger.info(f"[CALIDAD] Golden set cargado ({len(golden_set)} entradas) desde {golden_file}.")
+        else:
+            # Generar automáticamente un pequeño golden set para pruebas
+            num = int(os.getenv("GOLDEN_SET_DEFAULT_NUM", "5"))
+            golden_set = funciones_evaluacion.crear_golden_set_automatico(col_pdfs, llm_fast, os.getenv("MODELO_FAST"), num_preguntas=num)
+
+        if golden_set:
+            hit_rate, mrr = funciones_evaluacion.evaluar_retrieval(col_pdfs, model_emb, golden_set, top_k=3)
+            logger.info(f"[CALIDAD] Retrieval evaluado: {len(golden_set)} preguntas -> hit_rate={hit_rate}, mrr={mrr}")
+            state.setdefault('metricas', {})['hit_rate'] = hit_rate
+            state.setdefault('metricas', {})['mrr'] = mrr
+        else:
+            state['debug_pipeline'].append('[CALIDAD] No se generó ni cargó golden set para evaluación de retrieval.')
+    except Exception as e:
+        logger.error(f"[CALIDAD] Error durante evaluación de retrieval: {e}")
+        state['debug_pipeline'].append(f"[CALIDAD] Error durante evaluación de retrieval: {e}")
+    
     state["metricas"] = {
         "fidelidad": fidelidad,
-        "relevancia": relevancia
+        "relevancia": relevancia,
+        "hit_rate": hit_rate,
+        "mrr": mrr
     }
-    
-    state["debug_pipeline"].append(f"[CALIDAD] Fidelidad: {fidelidad} | Relevancia: {relevancia}")
-    logger.info(f"[CALIDAD] Fidelidad: {fidelidad} | Relevancia: {relevancia}")
+
+    state["debug_pipeline"].append(f"[CALIDAD] Fidelidad: {fidelidad} | Relevancia: {relevancia} | Hit Rate: {hit_rate*100:.1f}% | MRR: {mrr:.3f}")
+    logger.info(f"[CALIDAD] Fidelidad: {fidelidad} | Relevancia: {relevancia} | Hit Rate: {hit_rate*100:.1f}% | MRR: {mrr:.3f}")
     
     return state
 

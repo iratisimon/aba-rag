@@ -98,3 +98,37 @@ ESCALA DE EVALUACIÓN:
 | 5          | Perfecta: completa, precisa y directa    |
 
 VEREDICTO (responde SOLO con el número del 1 al 5):"""
+
+def obtener_prompt_eval_retrieval(texto_chunk: str) -> str:
+    """
+    Genera un prompt para que un modelo cree preguntas de evaluación
+    sobre un fragmento de documentos de la base de datos de autónomos en Bizkaia.
+    """
+    system_content = f"""Eres un experto en normativa para autónomos en Bizkaia, con profundo conocimiento de trámites, impuestos, subvenciones y ayudas locales.
+
+INSTRUCCIONES:
+1. Lee atentamente el fragmento proporcionado.
+2. Formula UNA sola PREGUNTA CLARA y ESPECÍFICA que pueda ser respondida usando únicamente la información contenida en el fragmento.
+3. La pregunta debe ser NATURAL y práctica, como si la hiciera un autónomo o un asesor.
+4. No inventes información ni asumas datos fuera del fragmento.
+5. Evita expresiones genéricas: no uses "según el texto", "en el documento" ni instrucciones adicionales.
+6. Centra la pregunta en trámites, normativa fiscal o ayudas para autónomos en Bizkaia.
+7. DEVUELVE SOLO la pregunta en ESPAÑOL, en una sola línea, sin comillas ni puntuación adicional (solo la pregunta).
+
+EJEMPLOS DE PREGUNTAS CORRECTAS:
+- ¿Qué deducciones fiscales puede aplicar un autónomo de Bizkaia al presentar el IRPF?
+- ¿Cuál es el procedimiento para solicitar la subvención de inicio de actividad en Bizkaia?
+- ¿Qué requisitos debe cumplir un trabajador autónomo para darse de alta en el RETA?
+
+EJEMPLOS DE PREGUNTAS INCORRECTAS (NO HACER):
+- ¿Qué dice el texto sobre la normativa?
+- Según el documento, ¿cuáles son los requisitos?
+- ¿Cómo se hace un trámite? (demasiado genérico)
+"""
+
+    user_content = f"""FRAGMENTO DE TEXTO:
+{texto_chunk[:1500]}
+
+PREGUNTA:"""
+
+    return system_content + "\n" + user_content
