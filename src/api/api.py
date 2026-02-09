@@ -71,7 +71,6 @@ def _evaluar_retrieval_y_guardar_en_cache() -> None:
                 golden_set = [json.loads(line) for line in f if line.strip()]
             logger.info(f"[RETRIEVAL] Golden set cargado ({len(golden_set)} entradas) desde {golden_file}.")
         else:
-            num = int(os.getenv("GOLDEN_SET_DEFAULT_NUM", "20"))
             golden_set = funciones_evaluacion.crear_golden_set_automatico(
                 col_pdfs, llm_fast, os.getenv("MODELO_FAST"), num_preguntas=num
             )
@@ -79,6 +78,7 @@ def _evaluar_retrieval_y_guardar_en_cache() -> None:
             hit_rate, mrr = funciones_evaluacion.evaluar_retrieval(
                 col_pdfs, model_emb, golden_set, top_k=3
             )
+            num = int(os.getenv("GOLDEN_SET_DEFAULT_NUM", "20"))
             retrieval_metrics_cache["hit_rate"] = hit_rate
             retrieval_metrics_cache["mrr"] = mrr
             retrieval_metrics_cache["num_preguntas"] = num

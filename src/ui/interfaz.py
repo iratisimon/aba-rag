@@ -186,7 +186,6 @@ ST_STYLE = """
     
     /* INPUT FLOTANTE (ADAPTIVE) - Ahora en columnas */
     .stChatInput {
-        bottom: 40px !important;
         background: transparent !important;
     }
     
@@ -215,7 +214,7 @@ ST_STYLE = """
     }
     
     .stFileUploader label {
-        font-size: 1.5rem !important;
+        font-size: 0.5rem !important;
         text-align: center !important;
         display: block !important;
         margin: 0 !important;
@@ -629,10 +628,11 @@ def main():
 
     # Obtener métricas de retrieval al inicio (solo una vez)
     if "retrieval_metrics" not in st.session_state:
-        hit_rate, mrr = obtener_metricas_retrieval()
+        hit_rate, mrr, num_preguntas = obtener_metricas_retrieval()
         st.session_state.retrieval_metrics = {
             "hit_rate": hit_rate,
-            "mrr": mrr
+            "mrr": mrr,
+            "num_preguntas": num_preguntas
         }
 
     landing_placeholder = st.empty()
@@ -663,7 +663,6 @@ def main():
                     /* Chat input abajo para no tapar las sugerencias */
                     div[data-testid="stChatInput"] {
                         /* Chat input dentro de columna - sin max-width aquí */
-                        margin-top: 4rem !important;
                         background: #FFFFFF !important;
                         border-radius: 0.6rem !important;
                         border: 2px solid #E1CBCB !important;
@@ -672,8 +671,6 @@ def main():
 
                     /* File uploader más compacto y bonito */
                     .stFileUploader > div {
-                        margin-top: 4rem !important;
-                        padding: 0.5rem !important;
                         border-radius: 0.6rem !important;
                         border: 2px solid #E1CBCB !important;
                         background: #FFFFFF !important;
@@ -737,7 +734,6 @@ def main():
             <style>
                 .full-landing-view { display: none !important; }
                 div[data-testid="stChatInput"] { 
-                    bottom: 40px !important; 
                     transition: bottom 0.3s ease !important;
                 }
                 .block-container {
@@ -766,44 +762,28 @@ def main():
                 st.session_state.processing = False
                 st.rerun()
 
-    # Input combinado: texto (75%) + imagen (25%) en una fila - máximo 700px
-    st.markdown("""
-        <style>
-            /* Contenedor centrado con ancho máximo de 700px */
-            .input-row-container {
-                max-width: 700px;
-                margin: 2rem auto 0 auto;
-                padding: 0 1rem;
-            }
-        </style>
-    """, unsafe_allow_html=True)
-    
-    # Crear columnas con proporciones 75%-25%
-    input_cols = st.columns([0.75, 0.25])
-    
-    with input_cols[0]:
-        # Input de texto (75%)
+    #input de texto e imagenes en el mismo div
+    with st.container(border=True):
         prompt = st.chat_input("Escribe tu consulta...", disabled=st.session_state.processing, key="main_chat_input")
         if prompt:
             st.session_state.messages.append({"role": "user", "content": prompt})
             st.session_state.processing = True
             st.session_state.awaiting_response = True
             st.rerun()
-    
-    with input_cols[1]:
-        # Input de imagen (25%)
+
         img_upload = st.file_uploader(
-            "",
+            "O busca una imagen similar...",
             type=["png", "jpg", "jpeg"],
             key="buscar_imagen_upload",
             help="Buscar por imagen similar",
-            disabled=st.session_state.processing
+            disabled=st.session_state.processing,
         )
     
     # Procesar imagen subida (si existe)
     if img_upload is not None:
         # Mostrar preview en un expander
         with st.expander("Vista previa y búsqueda", expanded=True):
+            st.image(img_upload, caption="Imagen subida", width="stretch")
             if st.button("Buscar", key="btn_buscar_imagen", use_container_width=True):
                 with st.spinner("Buscando..."):
                     try:
@@ -832,6 +812,7 @@ def main():
                     "imagenes": resultados,
                 })
                 st.rerun()
+        st.markdown("<br>", unsafe_allow_html=True)
 
     with st.sidebar:
         st.markdown("<h5>🍁 Asistente Autónomos Bizkaia</h5>", unsafe_allow_html=True)
