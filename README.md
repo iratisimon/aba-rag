@@ -6,8 +6,8 @@ Este proyecto implementa un sistema avanzado de **Generación Aumentada por Recu
 
 - **RAG Multimodal**: Recuperación inteligente tanto de fragmentos de texto como de imágenes relevantes (gráficos, tablas, logos) extraídos de documentos técnicos.
 - **Flujo Basado en Grafos**: Implementado con **LangGraph** para una lógica de decisión robusta (enrutamiento de consultas, evaluación de calidad, reintento de búsqueda).
-- **Interfaz Moderna**: Frontend espectacular desarrollado con **Streamlit**, optimizado para una experiencia de usuario fluida y visualmente atractiva.
-- **Backend Potente**: API construida con **FastAPI** que gestiona el procesamiento, la búsqueda vectorial y el streaming de respuestas.
+- **Interfaz**: Frontend desarrollado con **Streamlit**, optimizado para una experiencia de usuario fluida y visualmente atractiva.
+- **Backend**: API construida con **FastAPI** que gestiona el procesamiento, la búsqueda vectorial y el streaming de respuestas.
 - **Búsqueda Híbrida y HyDE**: Mejora la recuperación mediante la generación de respuestas hipotéticas (HyDE) y re-ranking de resultados.
 - **Evaluación Integrada**: Cálculo automático de métricas de retrieval (Hit Rate, MRR) y métricas de generación (Fidelidad, Relevancia).
 
@@ -65,7 +65,6 @@ graph TD
 
 ### 1. Requisitos Previos
 - Python 3.10 o superior.
-- Una clave de API (OpenAI/Gemini/Anthropic) configurada en el archivo `.env`.
 
 ### 2. Instalación
 Clona el repositorio e instala las dependencias:
@@ -75,14 +74,19 @@ cd RAG
 pip install -r requirements.txt
 ```
 
-### 3. Preparación de Datos
+### 3. Configuración de entorno
+Crea un archivo ```.env``` y configúralo usando como base el archivo ```.env.template```:<br>
+Lo único importante que deberías poner es una **API key** de [**groq**](groq.com).<br>
+(Las demás variables están configuradas por defecto, pero puedes cambiarlas si quieres experimentar)
+
+### 4. Preparación de Datos
 Para procesar los PDFs y crear la base de datos vectorial:<br>
 (El repositorio ya viene con una base de datos como ejemplo creada)
 ```bash
 python src/utilidades/funciones_db.py
 ```
 
-### 4. Ejecución
+### 5. Ejecución
 El proyecto incluye un script unificado que arranca la API de FastAPI y la interfaz de Streamlit automáticamente:
 ```bash
 python run.py
