@@ -17,24 +17,24 @@ Este proyecto implementa un sistema avanzado de **Generación Aumentada por Recu
 
 ```text
 RAG/
-├── data/                 # Documentos originales y metadatos procesados
-│   ├── documentos/       # PDFs originales
-│   ├── metadata_pdf.json # Metadatos extraídos de PDFs
-│   └── metadata_imagenes.json # Metadatos de imágenes procesadas
-├── src/                  # Código fuente
-│   ├── api/              # Backend FastAPI y lógica del Grafo (LangGraph)
-│   │   └── api.py        # Definición de nodos, bordes y endpoints de la API
-│   ├── ui/               # Frontend Streamlit
-│   │   └── interfaz.py   # Componentes visuales y lógica de cliente
-│   └── utilidades/       # Funciones modulares de soporte
-│       ├── funciones_db.py # Gestión de ChromaDB (inserción, carga)
-│       ├── funciones_preprocesado.py # OCR, extracción de texto e imágenes
-│       ├── funciones_evaluacion.py # Lógica de métricas RAGAS/custom
-│       ├── prompts.py    # Plantillas de sistema para el LLM
-│       └── utils.py      # Utilidades generales del proyecto
-├── run.py                # Script principal para arrancar API + UI simultáneamente
-├── requirements.txt      # Dependencias del proyecto
-└── .env                  # Configuración de claves API y rutas
+├── data/                               # Documentos originales y metadatos procesados
+│   ├── documentos/                     # PDFs originales
+│   ├── metadata_pdf.json               # Metadatos extraídos de PDFs
+│   └── metadata_imagenes.json          # Metadatos de imágenes procesadas
+├── src/                                # Código fuente
+│   ├── api/                            # Backend FastAPI y lógica del Grafo (LangGraph)
+│   │   └── api.py                      # Definición de nodos, bordes y endpoints de la API
+│   ├── ui/                             # Frontend Streamlit
+│   │   └── interfaz.py                 # Componentes visuales y lógica de cliente
+│   └── utilidades/                     # Funciones modulares de soporte
+│       ├── funciones_db.py             # Gestión de ChromaDB (inserción, carga)
+│       ├── funciones_preprocesado.py   # OCR, extracción de texto e imágenes
+│       ├── funciones_evaluacion.py     # Lógica de métricas RAGAS/custom
+│       ├── prompts.py                  # Plantillas de sistema para el LLM
+│       └── utils.py                    # Utilidades generales del proyecto
+├── run.py                              # Script principal para arrancar API + UI simultáneamente
+├── requirements.txt                    # Dependencias del proyecto
+└── .env                                # Configuración de claves API y rutas
 ```
 
 ---
@@ -76,7 +76,7 @@ pip install -r requirements.txt
 ```
 
 ### 3. Preparación de Datos
-Para procesar los PDFs y crear la base de datos vectorial:
+Para procesar los PDFs y crear la base de datos vectorial:<br>
 (El repositorio ya viene con una base de datos como ejemplo creada)
 ```bash
 python src/utilidades/funciones_db.py
