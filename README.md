@@ -70,7 +70,7 @@ graph TD
 ### 2. Instalación
 Clona el repositorio e instala las dependencias:
 ```bash
-git clone https://github.com/iratisimon/RAG.git
+git clone https://github.com/iratisimon/aba-rag.git
 cd RAG
 pip install -r requirements.txt
 ```
