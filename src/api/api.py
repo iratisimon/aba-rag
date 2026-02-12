@@ -655,8 +655,12 @@ async def buscar_imagenes_similares(file: UploadFile = File(...)):
             ))
     return out
 
-@app.post("/chat/stream")
-async def chat_streaming_endpoint(request: PreguntaRequest):
+@app.post("/chat", response_model=RespuestaResponse)
+async def chat_endpoint(request: PreguntaRequest):
+    """
+    Endpoint de chat estándar (no-streaming).
+    Llama al grafo, espera el resultado final y devuelve la respuesta formateada.
+    """
     inputs = {
         "pregunta": request.pregunta,
         "historial": request.historial,
@@ -670,40 +674,27 @@ async def chat_streaming_endpoint(request: PreguntaRequest):
         "categoria_detectada": "otros",
         "metricas": {}
     }
-    async def generate():
-        last_state = {}
-        content_yielded = False
+    
+    try:
+        start_time = time.time()
+        # Ejecutamos el grafo completo synchronously (bueno, con await)
+        resultado = await app_graph.ainvoke(inputs)
+        end_time = time.time()
         
-        async for event in app_graph.astream_events(inputs, version="v2"):
-            # 1. Capturamos tokens del modelo
-            if event["event"] == "on_chat_model_stream":
-                content = event["data"]["chunk"].content
-                if content:
-                    yield f"data: {json.dumps(content)}\n\n" # Usar JSON para escapar newlines
-                    content_yielded = True
-            
-            # 2. Capturamos el estado final cuando el grafo termina
-            elif event["event"] == "on_chain_end" and event["name"] == "LangGraph":
-                last_state = event["data"]["output"]
-        
-        # 2b. Fallback: Si no hubo streaming (ej: Saludo estático), enviamos la respuesta final de golpe
-        if not content_yielded and last_state and last_state.get("respuesta_final"):
-            yield f"data: {json.dumps(last_state.get('respuesta_final'))}\n\n"
-
-        # 3. Enviamos los metadatos al final como un último mensaje
-        if last_state:
-            metadata = {
-                "fuentes": last_state.get("contexto_fuentes", []),
-                "imagenes": last_state.get("imagenes_relacionadas", []),
-                "debug": {
-                    "categoria": last_state.get("categoria_detectada"),
-                    "pipeline": last_state.get("debug_pipeline"),
-                    "metricas": last_state.get("metricas", {})
-                }
-            }
-            yield f"metadata: {json.dumps(metadata)}\n\n"
-
-    return StreamingResponse(generate(), media_type="text/event-stream")
+        return RespuestaResponse(
+            respuesta=resultado.get("respuesta_final", ""),
+            fuentes=resultado.get("contexto_fuentes", []),
+            imagenes=resultado.get("imagenes_relacionadas", []),
+            debug_info={
+                "categoria": resultado.get("categoria_detectada"),
+                "pipeline": resultado.get("debug_pipeline"),
+                "metricas": resultado.get("metricas", {})
+            },
+            tiempo_segundos=round(end_time - start_time, 2)
+        )
+    except Exception as e:
+        logger.error(f"Error en endpoint de chat: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 def ejecutar_api():
     """Ejecuta la API de RAG para Autónomos Bizkaia"""

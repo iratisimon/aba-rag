@@ -494,103 +494,47 @@ def obtener_metricas_retrieval():
         print(f"Error obteniendo métricas de retrieval: {e}")
     return None, None, None
 
-async def ejecutar_streaming(prompt, chat_container):
-    full_response = ""
+async def ejecutar_chat(prompt, chat_container):
     # Resetear fuentes e imágenes anteriores
     st.session_state.last_sources = []
     st.session_state.last_images = []
     
-    response_placeholder = None
-
     with chat_container:
         # 1. Contenedor para la animación de "Pensando"
         thinking_placeholder = st.empty()
         thinking_placeholder.markdown("""
             <div class="thinking-bubble">
-                <span>Analizando documentos</span>
+                <span>Generando respuesta</span>
                 <div class="thinking-dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
             </div>
         """, unsafe_allow_html=True)
-        
-        # 2. Crear el placeholder de respuesta SOLO cuando tengamos contenido
-        response_placeholder = None
 
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            async with client.stream("POST", "http://127.0.0.1:8000/chat/stream", 
-                                   json={"pregunta": prompt}) as response:
-                
-                async for line in response.aiter_lines():
-                    if not line: continue
-                    
-                    if line.startswith("data: "):
-                        try:
-                            # Cortamos "data: " (6 caracteres) de forma segura
-                            json_str = line[6:]
-                            token = json.loads(json_str)
-                            full_response += token
-                        except json.JSONDecodeError as e:
-                            print(f"Error decodificando JSON: {e} | Linea: {line}")
-                            # Fallback: intentar texto plano si no es JSON (para compatibilidad)
-                            token = line.replace("data: ", "")
-                            full_response += token
-                        
-                        # 3. Al recibir el PRIMER TOKEN:
-                        # Borramos la animación de "Pensando" y creamos el placeholder de respuesta
-                        if response_placeholder is None:
-                            thinking_placeholder.empty()  # Limpiar primero
-                            with chat_container:
-                                response_placeholder = st.empty()  # Crear después
-                        
-                        # Limpieza de artefactos: eliminar </div> si aparece al final
-                        full_response_clean = full_response.replace("</div>", "")
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.post(
+                "http://127.0.0.1:8000/chat", 
+                json={"pregunta": prompt},
+                timeout=120.0
+            )
+            resp.raise_for_status()
+            resultado = resp.json()
+            
+            full_response = resultado.get("respuesta", "")
+            st.session_state.last_sources = resultado.get("fuentes", [])
+            st.session_state.last_images = resultado.get("imagenes", [])
+            st.session_state.debug_logs.append(resultado.get("debug_info", {}))
 
-                        # 4. Convertir markdown a HTML progresivamente durante el streaming
-                        import markdown
-                        content_html = markdown.markdown(full_response_clean)
+            # Actualizar métricas de retrieval
+            hit_rate, mrr, num_preguntas = obtener_metricas_retrieval()
+            st.session_state.retrieval_metrics["hit_rate"] = hit_rate
+            st.session_state.retrieval_metrics["mrr"] = mrr
+            st.session_state.retrieval_metrics["num_preguntas"] = num_preguntas
                         
-                        # Renderizar con cursor parpadeante
-                        streaming_html = f'''
-                        <div class="ai-bubble">
-                            <div class="content">
-                                {content_html}
-                                <span style="animation: blink 1s infinite;">|</span>
-                            </div>
-                        </div>
-                        <style>
-                            @keyframes blink {{
-                                0%, 50% {{ opacity: 1; }}
-                                51%, 100% {{ opacity: 0; }}
-                            }}
-                        </style>
-                        '''
-                        response_placeholder.markdown(streaming_html, unsafe_allow_html=True)
-                    
-                    elif line.startswith("metadata: "):
-                        meta_json = json.loads(line.replace("metadata: ", ""))
-                        st.session_state.last_sources = meta_json.get("fuentes", [])
-                        st.session_state.last_images = meta_json.get("imagenes", [])
-                        st.session_state.debug_logs.append(meta_json["debug"])
-                        
-                        # Actualizar métricas de retrieval después de cada pregunta
-                        hit_rate, mrr, num_preguntas = obtener_metricas_retrieval()
-                        st.session_state.retrieval_metrics["hit_rate"] = hit_rate
-                        st.session_state.retrieval_metrics["mrr"] = mrr
-                        st.session_state.retrieval_metrics["num_preguntas"] = num_preguntas
-                        
-        # 5. Finalización
+        # 2. Finalización
         thinking_placeholder.empty()
         
         if not full_response:
              full_response = "Lo siento, parece que no tengo información suficiente en este momento para responder a tu pregunta."
-             st.session_state.last_sources = []
-             st.session_state.last_images = []
-
-        if response_placeholder is not None:
-            response_placeholder.empty()
-        
-        # Limpieza final de artefactos
-        full_response = full_response.replace("</div>", "")
 
         render_message(
             "assistant", 
@@ -605,6 +549,10 @@ async def ejecutar_streaming(prompt, chat_container):
             "sources": st.session_state.get("last_sources", []),
             "imagenes": st.session_state.get("last_images", [])
         })
+
+    except Exception as e:
+        thinking_placeholder.empty()
+        st.error(f"Error de comunicación con la API: {e}")
 
     except Exception as e:
         thinking_placeholder.empty()
@@ -758,7 +706,7 @@ def main():
             st.session_state.awaiting_response = False
             last_msg = st.session_state.messages[-1]["content"] if st.session_state.messages else ""
             if last_msg:
-                asyncio.run(ejecutar_streaming(last_msg, chat_container))
+                asyncio.run(ejecutar_chat(last_msg, chat_container))
                 st.session_state.processing = False
                 st.rerun()
 
