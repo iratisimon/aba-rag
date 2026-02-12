@@ -5,12 +5,12 @@ Este proyecto implementa un sistema avanzado de Generacion Aumentada por Recuper
 ## Caracteristicas Principales
 
 - **RAG Multimodal**: Recuperacion inteligente tanto de fragmentos de texto como de imagenes relevantes (graficos, tablas, logos) extraidos de documentos tecnicos.
-- **Flujo Basado en Grafos**: Implementado con **LangGraph** para una logica de decision robusta (enrutamiento de consultas, evaluacion de calidad, reintento de busqueda).
-- **Interfaz**: Frontend desarrollado con **Streamlit**, optimizado para una experiencia de usuario fluida y visualmente atractiva.
-- **Backend**: API construida con **FastAPI** que gestiona el procesamiento, la busqueda vectorial y el streaming de respuestas.
+- **Flujo Basado en Grafos**: Implementado con **LangGraph** para una logica de decision robusta (enrutamiento de consultas, evaluacion de calidad, reintento de busqueda sin filtros).
+- **Interfaz**: Frontend desarrollado con **Streamlit**, optimizado para una experiencia de usuario fluida y visualmente atractiva con estados de carga claros.
+- **Backend**: API construida con **FastAPI** que gestiona el procesamiento, la busqueda vectorial y la orquestacion de modelos.
 - **Busqueda Hibrida y HyDE**: Mejora la recuperacion mediante la generacion de respuestas hipoteticas (HyDE) y re-ranking de resultados con Cross-Encoders.
+- **Logica de Reintento**: Si el sistema no encuentra informacion relevante en la categoria seleccionada, realiza un segundo intento de busqueda global sin filtros.
 - **Evaluacion Integrada**: Calculo automatico de metricas de retrieval (Hit Rate, MRR) y metricas de generacion (Fidelidad, Relevancia).
-- **Visualizacion UMAP**: Herramienta para el analisis espacial de los embeddings proyectados en 2D y 3D.
 
 ---
 
@@ -18,7 +18,7 @@ Este proyecto implementa un sistema avanzado de Generacion Aumentada por Recuper
 
 ```text
 aba_rag/
-├── chromadb/                           # Base de datos vectorial
+├── chromadb/                           # Base de datos vectorial (ChromaDB)
 ├── data/                               # Documentos originales y metadatos procesados
 │   ├── documentos/                     # PDFs originales e imagenes extraidas
 │   ├── metadata_pdf.json               # Metadatos extraidos de PDFs (clave: category)
@@ -35,8 +35,8 @@ aba_rag/
 │       ├── funciones_umap.py           # Visualizacion de embeddings con UMAP
 │       ├── prompts.py                  # Plantillas de sistema para el LLM
 │       └── utils.py                    # Utilidades generales del proyecto
-├── visualizaciones_umap/               # Carpeta para visualizaciones umap
-│   └──umap_ABA_3d_categoria.html       # Archivo .html con los graficos mostrando la distribución de los embbedings
+├── visualizaciones_umap/               # Carpeta para visualizaciones UMAP generadas
+│   └── umap_ABA_3d_categoria.html      # Proyeccion de embeddings en 3D por categoria
 ├── run.py                              # Script principal para arrancar API + UI simultaneamente
 ├── requirements.txt                    # Dependencias del proyecto
 └── .env.template                       # Configuracion de claves API y rutas
@@ -44,24 +44,24 @@ aba_rag/
 
 ---
 
-## Esquema de Ejecucion (RAG Flow)
+## Esquema de Ejecucion (LangGraph Flow)
 
-El siguiente diagrama muestra cono fluye una pregunta a traves del sistema utilizando LangGraph:
+El siguiente diagrama muestra cono fluye una consulta a traves del sistema, incluyendo la logica de reintento automatico:
 
 ```mermaid
 graph TD
     A[Pregunta Usuario] --> B{Router}
     B -- Saludo --> C[Respuesta Directa]
     B -- Pregunta --> D[Generacion HyDE]
-    D --> E[Buscador Multimodal]
-    E --> F[Retriever Texto + Imagenes]
-    F --> G[Re-ranker]
-    G --> H{Evaluador Relevancia}
-    H -- Insuficiente --> I[Sin Informacion]
-    H -- Suficiente --> J[Generador de Respuesta]
-    J --> K{Control Calidad}
-    K -- Alucinacion --> J
-    K -- Correcto --> L[Streaming al Usuario]
+    D --> E[Buscador Multimodal con Filtros]
+    E --> F[Reranker]
+    F --> G{Evaluador Relevancia}
+    G -- No Relevante y primer intento --> H[Buscador SIN Filtros]
+    H --> F
+    G -- No Relevante y reintento fallido --> I[Mensaje de Fallo]
+    G -- Relevante --> J[Generador de Respuesta]
+    J --> K[Evaluador Calidad/Fidelidad]
+    K --> L[Respuesta Final]
 ```
 
 ---
@@ -79,7 +79,7 @@ cd aba-rag
 pip install -r requirements.txt
 ```
 
-### 3. Configuracion de entorno
+### 3. Configuracion de Entorno
 Crea un archivo .env y configuralo usando como base el archivo .env.template.
 Es necesario configurar la API key de el proveedor de LLM compatible con OpenAI (ej: Groq).
 
@@ -99,12 +99,12 @@ python run.py
 
 ## Tecnologias Utilizadas
 
-- **Modelos**: LLM compatible con OpenAI (GPT, Llama), CLIP (Multimodal), Sentence Transformers (BGE).
-- **Orquestacion**: LangGraph para flujos de control y grafos de estado.
-- **Base de Datos**: ChromaDB para almacenamiento vectorial.
-- **Backend**: FastAPI para la exposicion de servicios y streaming.
-- **Frontend**: Streamlit para la interfaz de usuario.
-- **Procesamiento de Docs**: PyMuPDF para la extraccion de contenido y UMAP para visualizacion.
+- **Modelos**: LLM compatible con OpenAI (GPT, Llama), CLIP (Multimodal), Sentence Transformers (BGE), Cross-Encoders (Re-ranking).
+- **Orquestacion**: LangGraph para la gestion de estados y flujos complejos.
+- **Base de Datos**: ChromaDB para almacenamiento vectorial distribuido por colecciones (PDFs/Imagenes).
+- **Backend**: FastAPI para la exposicion de servicios y procesamiento asincrono.
+- **Frontend**: Streamlit para la interfaz de usuario con componentes personalizados.
+- **Procesamiento de Docs**: PyMuPDF para extraccion, UMAP para analisis de clusters.
 
 ---
 
