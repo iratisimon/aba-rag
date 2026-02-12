@@ -17,7 +17,7 @@ Este proyecto implementa un sistema avanzado de **Generación Aumentada por Recu
 
 ```text
 RAG/
-├── chromadb                            # Base de datos vectorial
+├── chromadb/                           # Base de datos vectorial
 ├── data/                               # Documentos originales y metadatos procesados
 │   ├── documentos/                     # PDFs originales
 │   ├── metadata_pdf.json               # Metadatos extraídos de PDFs
@@ -35,7 +35,7 @@ RAG/
 │       └── utils.py                    # Utilidades generales del proyecto
 ├── run.py                              # Script principal para arrancar API + UI simultáneamente
 ├── requirements.txt                    # Dependencias del proyecto
-└── .env.template                                # Configuración de claves API y rutas
+└── .env.template                       # Configuración de claves API y rutas
 ```
 
 ---
