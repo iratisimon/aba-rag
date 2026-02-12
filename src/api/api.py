@@ -148,6 +148,7 @@ class GraphState(TypedDict):
     metricas: dict
     debug_pipeline: List[str]
     destino: Optional[str]
+    intento_sin_filtros: bool
 
 async def generar_hyde(pregunta, client_llm)->str:
     """
@@ -218,10 +219,16 @@ async def nodo_buscador(state: GraphState):
     cat = state.get("categoria_detectada", "otros")
     pregunta = state["pregunta"]
     
-    state["debug_pipeline"].append(f"[BUSCADOR] Filtrando por '{cat}' + HyDE.")
+    intento_sin_filtros = state.get("intento_sin_filtros", False)
     
-    filtro_pdfs = {"category": cat} if cat != "otros" else None
-    filtro_imagenes = {"categoria": cat} if cat != "otros" else None
+    if intento_sin_filtros:
+        state["debug_pipeline"].append("[BUSCADOR] REINTENTO: Buscando SIN filtros.")
+        filtro_pdfs = None
+        filtro_imagenes = None
+    else:
+        state["debug_pipeline"].append(f"[BUSCADOR] Filtrando por '{cat}' + HyDE.")
+        filtro_pdfs = {"category": cat} if cat != "otros" else None
+        filtro_imagenes = {"categoria": cat} if cat != "otros" else None
     
     doc_hyde = await generar_hyde(pregunta, llm_fast)
     state["debug_pipeline"].append(f"[BUSCADOR] HyDE imaginó: '{doc_hyde[:50]}...'")
@@ -362,8 +369,7 @@ def nodo_reranker(state: GraphState):
     
     # Filtro de corte: Solo nos quedamos con los que superen un umbral (ej: 0.1 o 0.3)
     # y limitamos a los 3 mejores para no saturar el contexto del LLM
-    # 0.0 como prueba cambiar luego
-    umbral = 0.0
+    umbral = 0.15
     docs_reordenados = []
     metas_reordenadas = []
     
@@ -387,12 +393,19 @@ async def nodo_evaluador(state: GraphState):
     """
     pregunta = state["pregunta"]
     docs = state["contexto_docs"]
+    intento_sin_filtros = state.get("intento_sin_filtros", False)
     
     state["debug_pipeline"].append("[EVALUADOR] Calificando relevancia de documentos...")
     logger.info(f"[EVALUADOR] Calificando relevancia de documentos...")
     
     if not docs:
-        state["destino"] = "sin_informacion"
+        if not intento_sin_filtros:
+            state["debug_pipeline"].append("[EVALUADOR] Sin documentos. Reintentando sin filtros...")
+            state["intento_sin_filtros"] = True
+            state["destino"] = "reintentar"
+        else:
+            state["debug_pipeline"].append("[EVALUADOR] Seguimos sin documentos tras reintento. Fin.")
+            state["destino"] = "sin_informacion"
         return state
 
     llm = llm_fast
@@ -416,11 +429,17 @@ async def nodo_evaluador(state: GraphState):
         logger.info("[EVALUADOR] Documentos válidos. Procediendo a generar.")
         state["destino"] = "generador"
     else:
-        state["debug_pipeline"].append("[EVALUADOR] Documentos irrelevantes. Abortando generación.")
-        logger.info("[EVALUADOR] Documentos irrelevantes. Abortando generación.")
-        # FIX: Establecer respuesta final para que no llegue vacía al cliente
-        state["respuesta_final"] = "Lo siento, parece que no tengo información suficiente en este momento para responder a tu pregunta. "
-        state["destino"] = "sin_informacion"
+        if not intento_sin_filtros:
+            state["debug_pipeline"].append("[EVALUADOR] Documentos irrelevantes. Reintentando sin filtros...")
+            state["intento_sin_filtros"] = True
+            state["destino"] = "reintentar"
+            state["contexto_docs"] = [] # Limpiar para nueva búsqueda
+            state["contexto_fuentes"] = []
+        else:
+            state["debug_pipeline"].append("[EVALUADOR] Documentos irrelevantes tras reintento. Abortando.")
+            logger.info("[EVALUADOR] Documentos irrelevantes tras reintento. Abortando.")
+            state["respuesta_final"] = "Lo siento, parece que no tengo información suficiente en este momento para responder a tu pregunta. "
+            state["destino"] = "sin_informacion"
     
     return state
 
@@ -529,6 +548,7 @@ def construir_grafo():
         lambda state: state["destino"],
         {
             "generador": "generador",
+            "reintentar": "buscador",
             "sin_informacion": END
         }
     )
@@ -646,6 +666,7 @@ async def chat_streaming_endpoint(request: PreguntaRequest):
         "respuesta_final": "",
         "debug_pipeline": [],
         "destino": None,
+        "intento_sin_filtros": False,
         "categoria_detectada": "otros",
         "metricas": {}
     }

@@ -16,7 +16,7 @@ IMAGENES_DIR = Path(__file__).resolve().parents[2] / "data" / "documentos" / "im
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
-    page_title="Asistente Autónomos Bizkaia",
+    page_title="ABA - Asistente Autónomos Bizkaia",
     page_icon="🍁",
     layout="wide",
 )
@@ -815,7 +815,7 @@ def main():
         st.markdown("<br>", unsafe_allow_html=True)
 
     with st.sidebar:
-        st.markdown("<h5>🍁 Asistente Autónomos Bizkaia</h5>", unsafe_allow_html=True)
+        st.markdown("<h5>🍁 ABA - Asistente Autónomos Bizkaia</h5>", unsafe_allow_html=True)
         st.markdown("<h4>Panel Informativo</h4>", unsafe_allow_html=True)
         
         status_color = f"<span style='color: #2BB92B'>{st.session_state.api_status}</span>" if st.session_state.api_status == "Conectado" else f"<span style='color:red'>{st.session_state.api_status}</span>"
