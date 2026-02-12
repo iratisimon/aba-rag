@@ -10,7 +10,7 @@ Este proyecto implementa un sistema avanzado de Generacion Aumentada por Recuper
 - **Backend**: API construida con **FastAPI** que gestiona el procesamiento, la busqueda vectorial y la orquestacion de modelos.
 - **Busqueda Hibrida y HyDE**: Mejora la recuperacion mediante la generacion de respuestas hipoteticas (HyDE) y re-ranking de resultados con Cross-Encoders.
 - **Logica de Reintento**: Si el sistema no encuentra informacion relevante en la categoria seleccionada, realiza un segundo intento de busqueda global sin filtros.
-- **Evaluacion Integrada**: Calculo automatico de metricas de retrieval (Hit Rate, MRR) y metricas de generacion (Fidelidad, Relevancia).
+- **Evaluacion Integrada**: Metricas de generacion (Fidelidad, Relevancia) y alculo automatico de metricas de retrieval (Hit Rate, MRR).
 
 ---
 
