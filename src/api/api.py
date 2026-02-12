@@ -220,7 +220,8 @@ async def nodo_buscador(state: GraphState):
     
     state["debug_pipeline"].append(f"[BUSCADOR] Filtrando por '{cat}' + HyDE.")
     
-    filtro = {"categoria": cat} if cat != "otros" else None
+    filtro_pdfs = {"category": cat} if cat != "otros" else None
+    filtro_imagenes = {"categoria": cat} if cat != "otros" else None
     
     doc_hyde = await generar_hyde(pregunta, llm_fast)
     state["debug_pipeline"].append(f"[BUSCADOR] HyDE imaginó: '{doc_hyde[:50]}...'")
@@ -234,7 +235,7 @@ async def nodo_buscador(state: GraphState):
     res_pdfs = col_pdfs.query(
         query_embeddings=q_emb,
         n_results=5,     
-        where=filtro 
+        where=filtro_pdfs
     )
     state["debug_pipeline"].append(f"[BUSCADOR] Encontrados: {len(res_pdfs['documents'][0])} documentos de texto.")
     logger.info(f"[BUSCADOR] Encontrados: {len(res_pdfs['documents'][0])} documentos de texto.")
@@ -302,7 +303,7 @@ async def nodo_buscador(state: GraphState):
         res_imagenes = col_imagenes.query(
             query_embeddings=q_emb_clip,
             n_results=3,
-            where=filtro
+            where=filtro_imagenes
         )
         
         imagenes = []

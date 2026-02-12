@@ -11,7 +11,6 @@ loguru
 openai
 langchain-openai
 langgraph
-langchain-text-splitters
 chromadb
 sentence-transformers
 transformers
@@ -24,3 +23,6 @@ markdown
 tqdm
 Pillow
 httpx
+umap-learn
+numpy
+scikit-learn
