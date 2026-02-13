@@ -11,10 +11,10 @@ El contenido de los PDFs, se organiza en tres categorías principales: laboral, 
 ## Características Principales
 
 - **RAG Multimodal**: Recuperación inteligente tanto de fragmentos de texto como de imágenes relevantes.
-- **Flujo Basado en Grafos**: Implementado con **LangGraph** para una lógica de decisión robusta (enrutamiento de consultas, evaluación de calidad, reintento de búsqueda sin filtros).
+- **Flujo Basado en Grafos**: Implementado con **LangGraph** que permite modelar una rag con grafos de estados, donde cada nodo ejecuta una tarea y según el resultado determina como continua el proceso, para una lógica de decisión robusta.
 - **Interfaz**: Frontend desarrollado con **Streamlit**, optimizado para una experiencia de usuario fluida y visualmente atractiva con estados de carga claros.
 - **Backend**: API construida con **FastAPI** que gestiona el procesamiento, la búsqueda vectorial y la orquestación de modelos.
-- **Búsqueda Híbrida y HyDE**: Mejora la recuperación mediante la generación de respuestas hipotéticas (HyDE) y re-ranking de resultados con Cross-Encoders.
+- **Búsqueda Híbrida, HyDE y Re-ranking**: Combina búsqueda léxica y semántica, mejora la recuperación generando respuestas hipotéticas (HyDE) y ordena los resultados por relevancia usando Cross-Encoders.
 - **Lógica de Reintento**: Si el sistema no encuentra información relevante en la categoría seleccionada, realiza un segundo intento de búsqueda global sin filtros.
 - **Evaluación Integrada**: Cálculo automático de métricas de retrieval (Hit Rate, MRR) y métricas de generación (Fidelidad, Relevancia).
 
@@ -27,8 +27,8 @@ aba_rag/
 ├── chromadb/                           # Base de datos vectorial (ChromaDB)
 ├── data/                               # Documentos originales y metadatos procesados
 │   ├── documentos/                     # PDFs originales e imágenes extraídas
-│   ├── metadata_pdf.json               # Metadatos extraídos de PDFs (clave: category)
-│   └── metadata_imagenes.json          # Metadatos de imágenes procesadas (clave: categoria)
+│   ├── metadata_pdf.json               # Metadatos extraídos de PDFs 
+│   └── metadata_imagenes.json          # Metadatos de imágenes procesadas 
 ├── src/                                # Código fuente
 │   ├── api/                            # Backend FastAPI y lógica del Grafo (LangGraph)
 │   │   └── api.py                      # Definición de nodos, bordes y endpoints de la API
@@ -49,6 +49,10 @@ aba_rag/
 ```
 
 ---
+## Base de datos y embbedings
+
+- Base de datos vectorial creada con ChromaDB. 
+- Dos colecciones, una para los embedding del texto de los PDFs generados con 'Qwen/Qwen3-Embbeding-0.6B' y otra para los embbedings de las imágenes generados con un modelo CLIP 'openai/clip-vit-base-patch32'. 
 
 ## Esquema de Ejecución (LangGraph Flow)
 
