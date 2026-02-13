@@ -100,7 +100,7 @@ Crea un archivo .env y configuralo usando como base el archivo .env.template.
 Es necesario configurar la API key de el proveedor de LLM compatible con OpenAI (ej: Groq).
 
 ### 4. Preparación de Datos
-Para procesar los PDFs y crear la base de datos vectorial:
+Para procesar los PDFs y crear la base de datos vectorial (el repositorio ya contiene una base de datos como ejemplo):
 ```bash
 python src/utilidades/funciones_db.py
 ```
