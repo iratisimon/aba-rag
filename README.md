@@ -4,11 +4,13 @@ Este proyecto implementa un sistema avanzado de Generación Aumentada por Recupe
 
 ## Objetivo
 
-ABA (Asistente Bizkaia Autónomos) está orientado a apoyar a los trabajadores autónomos de Bizkaia en la resolución de dudas sobre trámites, normativa y ayudas, con el objetivo de facilitar la búsqueda de este tipo información y hacerla un poco más accesible. El contenido de los PDFs, se organiza en tres categorías principales: laboral, fiscal y ayudas y subvenciones. A partir de estos documentos se extraen las imágenes que el sistema utiliza como parte del proceso de recuperación multimodal.
+ABA (Asistente Bizkaia Autónomos) está orientado a apoyar a los trabajadores autónomos de Bizkaia en la resolución de dudas sobre trámites, normativa y ayudas, con el objetivo de facilitar la búsqueda de este tipo información y hacerla un poco más accesible. 
+
+El contenido de los PDFs, se organiza en tres categorías principales: laboral, fiscal y ayudas y subvenciones. A partir de estos documentos se extraen las imágenes que el sistema utiliza como parte del proceso de recuperación multimodal.
 
 ## Características Principales
 
-- **RAG Multimodal**: Recuperación inteligente tanto de fragmentos de texto como de imágenes relevantes (gráficos, tablas, logos) extraídos de documentos técnicos.
+- **RAG Multimodal**: Recuperación inteligente tanto de fragmentos de texto como de imágenes relevantes.
 - **Flujo Basado en Grafos**: Implementado con **LangGraph** para una lógica de decisión robusta (enrutamiento de consultas, evaluación de calidad, reintento de búsqueda sin filtros).
 - **Interfaz**: Frontend desarrollado con **Streamlit**, optimizado para una experiencia de usuario fluida y visualmente atractiva con estados de carga claros.
 - **Backend**: API construida con **FastAPI** que gestiona el procesamiento, la búsqueda vectorial y la orquestación de modelos.
