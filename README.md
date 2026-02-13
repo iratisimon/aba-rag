@@ -52,7 +52,13 @@ aba_rag/
 ## Base de datos y embbedings
 
 - Base de datos vectorial creada con ChromaDB. 
-- Dos colecciones, una para los embedding del texto de los PDFs generados con 'Qwen/Qwen3-Embbeding-0.6B' y otra para los embbedings de las imágenes generados con un modelo CLIP 'openai/clip-vit-base-patch32'. 
+- Dos colecciones, una para los embedding del texto de los PDFs generados con ```Qwen/Qwen3-Embbeding-0.6B``` y otra para los embbedings de las imágenes generados con un modelo CLIP ```openai/clip-vit-base-patch32```.
+
+<div align="center">
+  <i>Visualización UMAP de embbedings:</i>
+  <br><br>
+  <img src="https://github.com/user-attachments/assets/9cf8e535-a2bd-4e32-9c35-41f48217ceb3" alt="umap">
+</div>
 
 ## Esquema de Ejecución (LangGraph Flow)
 
